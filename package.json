@@ -1,0 +1,17 @@
+{
+  "name": "sumi",
+  "scripts": {
+    "dev": "bun run --watch src/ src/example/index.example.ts"
+  },
+  "dependencies": {
+    "chokidar": "^4.0.1",
+    "hono": "^4.6.10",
+    "lodash.debounce": "^4.0.8",
+    "pino": "^9.5.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/lodash.debounce": "^4.0.9",
+    "tsx": "^4.19.2"
+  }
+}

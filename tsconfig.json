@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "outDir": "./dist",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "declaration": true,
+    "declarationDir": "./dist",
+    "typeRoots": ["src/types", "./node_modules/@types"]
+  },
+  "include": ["src/**/*.ts", "src/index.ts", "static/hibana.ts"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
+}

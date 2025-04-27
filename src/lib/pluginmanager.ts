@@ -1,4 +1,6 @@
 import { Context, Hono, Next } from 'hono';
+import { SumiContext } from './types';
+import { MiddlewareHandler } from './middlewarehandler';
 
 export class PluginManager {
   private plugins: Map<string, unknown> = new Map();
@@ -8,7 +10,7 @@ export class PluginManager {
       if (!c.plugin) {
         c.plugin = {
           set: <T>(key: string, value: T): void => this.set(key, value),
-          use: <T>(key: string): T => this.use<T>(key)
+          use: <T>(key: string): T => this.use<T>(key),
         };
       }
       await next();
@@ -27,7 +29,12 @@ export class PluginManager {
     return plugin as T;
   }
 
-  register(handler: (c: Context, next: Next) => Promise<void | Response>): void {
-    this.app.use('*', handler);
+  register(
+    handler: (c: SumiContext, next: Next) => Promise<void | Response>
+  ): void {
+    this.app.use(
+      '*',
+      handler as (c: Context, next: Next) => Promise<void | Response>
+    );
   }
 }

@@ -25,13 +25,13 @@ bun install sumi //WIP
 ```typescript
 import { Sumi } from 'sumi';
 
-const app = new Sumi({
+const sumi = new Sumi({
   port: 3000,
   routesDir: './routes',
   middlewareDir: './routes/middleware'
 });
 
-app.burn();
+sumi.burn();
 const fetch = sumi.fetch()
 
 export default {

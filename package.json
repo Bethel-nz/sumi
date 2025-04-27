@@ -1,17 +1,41 @@
 {
   "name": "sumi",
+  "version": "0.1.0",
+  "bin": {
+    "sumi": "./bin/sumi-cli.ts"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "scripts": {
+    "build": "tsc",
     "dev": "bun run --watch src/ src/example/index.example.ts"
   },
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
   "dependencies": {
+    "@types/prompts": "^2.4.9",
     "chokidar": "^4.0.1",
     "hono": "^4.6.10",
     "lodash.debounce": "^4.0.8",
-    "pino": "^9.5.0"
+    "pino": "^9.5.0",
+    "prompts": "^2.4.2",
+    "zod": "^3.22.4",
+    "zodest": "^0.3.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/lodash.debounce": "^4.0.9",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
   }
 }

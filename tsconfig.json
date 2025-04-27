@@ -13,6 +13,6 @@
     "declarationDir": "./dist",
     "typeRoots": ["src/types", "./node_modules/@types"]
   },
-  "include": ["src/**/*.ts", "src/index.ts", "static/hibana.ts"],
-  "exclude": ["node_modules", "**/*.spec.ts"]
+  "include": ["src/**/*.ts", "index.ts", "static/hibana.ts"],
+  "exclude": ["node_modules", "**/*.spec.ts", "./src/example"]
 }

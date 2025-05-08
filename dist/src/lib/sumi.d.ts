@@ -1,5 +1,5 @@
 import { ExecutionContext, Hono, Next } from 'hono';
-import { SumiConfig, SumiContext } from './types';
+import { SumiContext } from './types';
 /**
  * Sumi - A lightweight file based routing web framework built on top of Hono
  */
@@ -82,3 +82,11 @@ declare class Sumi {
     fetch(): ((request: Request, Env?: unknown, executionCtx?: ExecutionContext) => Response | Promise<Response>) | undefined;
 }
 export default Sumi;
+import { SumiConfig } from './types';
+/**
+ * Type helper for defining Sumi configuration.
+ * Provides type checking and auto-completion for sumi.config.ts files.
+ */
+export declare function defineConfig(config: SumiConfig): SumiConfig;
+export type { SumiConfig, StaticRouteConfig, SumiContext } from './types';
+export type { Context as HonoContext, Next as HonoNext } from 'hono';

@@ -22,55 +22,62 @@ function generateSumiConfigContent(config: any): string {
 
   return `
 import type { SumiConfig } from '@bethel-nz/sumi';
+import { defineConfig } from '@bethel-nz/sumi';
 
-const config: SumiConfig = {
+export default defineConfig({
   ${JSON.stringify(cleanConfig, null, 2).slice(1, -1)}
-};
-
-export default config;
+});
   `;
 }
 
 function generateIndexRouteContent(): string {
   return `
 import { Context } from 'hono';
+import { z } from 'zod';
+import { createRoute } from '@bethel-nz/sumi/router';
 
-export default {
-  get: (c: Context) => {
-    const name = c.req.query('name') || 'World'; 
-    return c.json({ 
-      message: \`Hello, \${name}! This is the root route.\` 
-    });
+const querySchema = z.object({
+  name: z.string().optional().default('World'),
+});
+
+export default createRoute({
+  get: {
+    schema: {
+      query: querySchema
+    },
+    handler: (c: Context) => {
+      const { name } = c.req.valid('query');
+      return c.json({
+        message: \`Hello, \${name}! This is the root route with validation.\`
+      });
+    }
   },
-};
+});
   `;
 }
 
 function generateMiddlewareContent(): string {
   return `
-import { Context, Next } from 'hono';
+import { Next } from 'hono';
+import type { SumiContext } from '@bethel-nz/sumi/types';
+import { createMiddleware } from '@bethel-nz/sumi/router';
 
 /**
- * Middleware that logs request and response details.
- * Logs the HTTP method, request URL, and response status.
+ * Example Middleware using createMiddleware.
+ * Logs request start and end with duration.
  */
-export default {
-  _: async (c: Context, next: Next) => {
-    // Log request details
+export default createMiddleware({
+  _: async (c: SumiContext, next: Next) => {
     const start = Date.now();
-    const method = c.req.method;
-    const url = c.req.url;
-    console.log(\`[\${method}] \${url} - Request started\`);
-    c.set('url', \`google.com\`);
-    await next();
-
-    const duration = Date.now() - start;
-    const status = c.res.status;
     console.log(
-      \`[\${method}] \${url} - Response status: \${status} - Duration: \${duration}ms\`
+      \`-> \${c.req.method} \${new URL(c.req.url).pathname}\`
     );
+    await next();
+    const duration = Date.now() - start;
+    console.log(
+      \`<- \${c.req.method} \${new URL(c.req.url).pathname} (\${c.res.status}) \\\\\`\${duration}ms\\\\\`\n    );
   },
-};
+});
     `;
 }
 
@@ -140,31 +147,28 @@ const cliConfig = defineConfig({
         );
         console.log(`📄 Created package.json`);
 
-        // 2. Install dependencies
-        // Restore automatic dependency installation
+        // Always install dependencies from npm
         console.log(
           `📦 Installing dependencies (@bethel-nz/sumi, hono, zod, @hono/zod-validator)...`
         );
         try {
-          // Use the correct scoped package name
           execSync('bun add @bethel-nz/sumi hono zod @hono/zod-validator', {
             cwd: projectPath,
             stdio: 'inherit',
           });
         } catch (error) {
-          console.error('❌ Failed to install dependencies.', error);
-          // Optional: Clean up created directory?
-          // Consider removing the partially created project folder on failure
-          // fs.rmSync(projectPath, { recursive: true, force: true });
+          console.error('❌ Failed to install dependencies from npm.', error);
           process.exit(1);
         }
 
+        // 3. Run the 'init' logic within the new project directory
         console.log(`⚙️ Initializing project configuration...`);
         await initProject(projectPath);
 
         console.log(`\n✅ Project '${projectName}' created successfully!`);
         console.log(`\nTo get started:`);
         console.log(`  cd ${projectName}`);
+        // Restore simple final instructions
         console.log(`  bun run dev`);
       },
     }),

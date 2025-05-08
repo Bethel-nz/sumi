@@ -1,13 +1,24 @@
-import { Context, Hono, Next } from 'hono';
-import { PluginManager } from './pluginmanager';
+import { Context, Next as HonoNext, HonoRequest } from 'hono';
+import { z, ZodSchema, ZodObject } from 'zod';
+import { PluginManager } from './pluginmanager'; // Assuming this is defined elsewhere
 
-type StaticRouteConfig = {
+// Validation target types (already in your router.ts, ensure it's consistent or imported)
+export type ValidationTarget =
+  | 'json'
+  | 'form'
+  | 'query'
+  | 'param'
+  | 'header'
+  | 'cookie';
+
+// SumiConfig and StaticRouteConfig (from your original types.ts)
+export type StaticRouteConfig = {
   path: string;
   root: string;
 };
 
-type SumiConfig = {
-  app?: Hono;
+export type SumiConfig = {
+  app?: import('hono').Hono; // Use import type for Hono if app is optional
   logger: boolean;
   basePath?: string;
   middlewareDir?: string;
@@ -16,8 +27,22 @@ type SumiConfig = {
   static?: StaticRouteConfig[];
 };
 
-interface SumiContext extends Context {
-  plugin: PluginManager;
+// SumiContext extending Hono's Context
+export interface SumiContext extends Context {
+  var: {
+    plugin: PluginManager;
+    // Add other framework variables here if needed
+  };
 }
 
-export { SumiConfig, StaticRouteConfig, SumiContext };
+// Generic type for the c.req.valid(...) function
+export type TypedValid<T extends Record<string, ZodSchema | ZodObject<{}>>> = {
+  <K extends keyof T & ValidationTarget>(target: K): z.infer<T[K]>;
+};
+
+// Generic type for Hono's request object augmented with the .valid() method
+export interface TypedRequest<
+  T extends Record<string, ZodSchema | ZodObject<{}>>
+> extends HonoRequest {
+  valid: TypedValid<T>;
+}

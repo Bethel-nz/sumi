@@ -5,9 +5,9 @@ export declare class MiddlewareHandler {
     private middlewareDir;
     private basePath;
     constructor(app: Hono, logger: boolean, middlewareDir: string, basePath: string);
-    applyMiddleware(directory: string, basePath?: string): void;
-    applyGlobalMiddleware(): void;
-    reset(newApp: Hono): void;
+    applyMiddleware(directory: string, basePath?: string): Promise<void>;
+    applyGlobalMiddleware(): Promise<void>;
+    reset(newApp: Hono): Promise<void>;
     private isValidFile;
     private isMiddlewareFile;
 }

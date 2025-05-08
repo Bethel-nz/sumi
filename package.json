@@ -8,14 +8,18 @@
   "types": "./dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "bun run --watch src/ src/example/index.example.ts"
+    "dev": "bun run --watch example/index.ts --hot"
   },
   "exports": {
     ".": {
-      "require": "./dist/index.js",
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "require": "./dist/lib/sumi.js",
+      "import": "./dist/lib/sumi.js",
+      "types": "./dist/lib/sumi.d.ts"
+    },
+    "./router": {
+      "require": "./dist/lib/router.js",
+      "import": "./dist/lib/router.js",
+      "types": "./dist/lib/router.d.ts"
     }
   },
   "files": [
@@ -23,6 +27,7 @@
     "bin"
   ],
   "dependencies": {
+    "@hono/zod-validator": "^0.5.0",
     "@types/prompts": "^2.4.9",
     "chokidar": "^4.0.1",
     "hono": "^4.6.10",

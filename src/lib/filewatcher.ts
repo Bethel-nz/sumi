@@ -41,11 +41,6 @@ export function startFileWatcher(
     }
   });
 
-  // Add a ready event listener for confirmation
-  watcher.on('ready', () => {
-    console.log('[FileWatcher] Initial scan complete. Ready for changes.');
-  });
-
   // Add an error event listener
   watcher.on('error', (error) => {
     console.error(`[FileWatcher] Error: ${error}`);

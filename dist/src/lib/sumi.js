@@ -5,6 +5,7 @@ import { RouteParser } from './RouteParser';
 import { startFileWatcher } from './filewatcher';
 import { MiddlewareHandler } from './middlewarehandler';
 import { PluginManager } from './pluginmanager';
+import { zValidator } from '@hono/zod-validator';
 /**
  * Sumi - A lightweight file based routing web framework built on top of Hono
  */
@@ -142,74 +143,105 @@ class Sumi {
     async processRouteFile(filePath, baseDir) {
         let routeModule;
         try {
-            // Use dynamic import without cache-busting query parameter
             console.log(`[Sumi Router] Importing route: ${filePath}`);
             routeModule = await import(filePath);
             if (!routeModule.default) {
-                // Check for default export on the imported module
                 console.warn(`[Sumi Router] No default export found in route file: ${filePath}. Skipping.`);
                 return;
             }
-            // Get the default export
-            const route = routeModule.default;
         }
         catch (error) {
             console.error(`[Sumi Router] Error loading route file ${filePath}:`, error);
-            return; // Stop processing this file if loading fails
+            return;
         }
-        // --- Route processing logic remains largely the same ---
+        const routeDefinition = routeModule.default;
         const route_path = this.convertToHonoRoute(filePath);
         if (!route_path)
             return;
-        // Apply middleware (assuming applyMiddleware is synchronous)
+        // Apply file-based middleware (if any - this might need rethinking with CreateRoute)
         if (!this.processedPaths.has(route_path)) {
+            // TODO: Revisit how file-based _middleware fits with CreateRoute definition?
+            // Maybe CreateRoute needs a top-level middleware array?
             this.middlewareHandler.applyMiddleware(baseDir, route_path);
             this.processedPaths.add(route_path);
         }
-        // Get the default export again for processing methods
-        const route = routeModule.default;
-        Object.keys(route).forEach((method) => {
-            const handler = route[method];
-            if (typeof handler === 'function') {
-                const routeKey = `${method.toUpperCase()}:${route_path}`;
-                // Only register if it's a new unique route
-                // Only register if it's a new unique route
-                if (!this.uniqueRoutes.has(routeKey)) {
-                    this.uniqueRoutes.add(routeKey);
-                    try {
-                        // applyRouteMethod remains synchronous
-                        this.applyRouteMethod(method, route_path, handler);
-                    }
-                    catch (error) {
-                        console.error(`[Sumi Router] Error applying route method ${method.toUpperCase()} for path ${route_path} from file ${filePath}:`, error);
-                    }
-                }
+        // Process each method defined in the route object
+        Object.keys(routeDefinition).forEach((method) => {
+            const methodKey = method;
+            const methodDefinition = routeDefinition[methodKey];
+            let userHandler;
+            let validationSchemas;
+            if (!methodDefinition)
+                return; // Skip if method is undefined
+            // Determine handler and schemas based on the definition structure
+            if (typeof methodDefinition === 'function') {
+                userHandler = methodDefinition;
+                validationSchemas = undefined;
             }
-        });
+            else if (typeof methodDefinition === 'object' &&
+                typeof methodDefinition.handler === 'function') {
+                userHandler = methodDefinition.handler;
+                validationSchemas = methodDefinition.schema;
+            }
+            else {
+                // Handle cases where the definition might be invalid (e.g., object without handler)
+                if (methodKey !== '_') {
+                    // Allow middleware ('_') potentially being just an object
+                    console.warn(`[Sumi Router] Invalid route definition for method "${method}" in ${filePath}. Skipping.`);
+                }
+                return;
+            }
+            const routeKey = `${method.toUpperCase()}:${route_path}`;
+            if (this.uniqueRoutes.has(routeKey)) {
+                return; // Skip if already registered (e.g., via handleDirectory/handleFile overlap)
+            }
+            this.uniqueRoutes.add(routeKey);
+            const middlewares = []; // Array to hold validators
+            // Add validators if schemas are defined
+            if (validationSchemas) {
+                Object.keys(validationSchemas).forEach((target) => {
+                    const schema = validationSchemas[target];
+                    if (schema) {
+                        console.log(`[Sumi Router] Applying validation for ${target} on ${method.toUpperCase()} ${route_path}`);
+                        middlewares.push(zValidator(target, schema));
+                    }
+                });
+            }
+            // Register route with Hono, applying middleware first, then the handler
+            try {
+                console.log(`[Sumi Router] Registering route: ${method.toUpperCase()} ${route_path}`);
+                // Spread middleware array BEFORE the user handler
+                this.applyRouteMethod(method, route_path, ...middlewares, userHandler);
+            }
+            catch (error) {
+                console.error(`[Sumi Router] Error applying route method ${method.toUpperCase()} for path ${route_path} from file ${filePath}:`, error);
+            }
+        }); // End forEach method
     }
-    applyRouteMethod(method, routePath, handler) {
-        // Regular route handling
+    // Update applyRouteMethod to accept multiple handlers
+    applyRouteMethod(method, routePath, ...handlers // Accept multiple handlers (validators + final handler)
+    ) {
         switch (method.toLowerCase()) {
             case 'get':
-                this.app.get(routePath, handler);
+                this.app.get(routePath, ...handlers);
                 break;
             case 'post':
-                this.app.post(routePath, handler);
+                this.app.post(routePath, ...handlers);
                 break;
             case 'put':
-                this.app.put(routePath, handler);
+                this.app.put(routePath, ...handlers);
                 break;
             case 'delete':
-                this.app.delete(routePath, handler);
+                this.app.delete(routePath, ...handlers);
                 break;
             case 'patch':
-                this.app.patch(routePath, handler);
+                this.app.patch(routePath, ...handlers);
                 break;
-            case '_':
-                this.app.use(routePath, handler);
+            case '_': // For middleware defined via CreateRoute
+                this.app.use(routePath, ...handlers);
                 break;
             default:
-                console.log(`Unknown method ${method}`);
+                console.log(`[Sumi Router] Unknown or unsupported method "${method}" in route definition.`);
         }
     }
     clearRoutesAndMiddleware() {
@@ -297,3 +329,10 @@ class Sumi {
     }
 }
 export default Sumi;
+/**
+ * Type helper for defining Sumi configuration.
+ * Provides type checking and auto-completion for sumi.config.ts files.
+ */
+export function defineConfig(config) {
+    return config;
+}

@@ -12,44 +12,71 @@ export class MiddlewareHandler {
         this.middlewareDir = middlewareDir;
         this.basePath = basePath;
     }
-    applyMiddleware(directory, basePath = '/') {
+    async applyMiddleware(directory, basePath = '/') {
         const middlewareFiles = [
             path.join(directory, '_middleware.ts'),
             path.join(directory, '_index.ts'),
         ];
-        middlewareFiles.forEach((filePath) => {
+        await Promise.all(middlewareFiles.map(async (filePath) => {
             if (fs.existsSync(filePath) &&
                 this.isValidFile(filePath) &&
                 fs.statSync(filePath).size > 0) {
-                const middleware = require(filePath).default._;
-                if (typeof middleware === 'function') {
-                    this.app.use(`${basePath}/*`, middleware);
+                try {
+                    console.log(`[Sumi Middleware] Importing middleware: ${filePath}`);
+                    const middlewareModule = await import(filePath);
+                    if (middlewareModule.default &&
+                        typeof middlewareModule.default._ === 'function') {
+                        const middlewareDef = middlewareModule.default;
+                        const handler = middlewareDef._;
+                        console.log(`[Sumi Middleware] Applying route middleware from ${filePath} to ${basePath}/*`);
+                        this.app.use(`${basePath}/*`, handler);
+                    }
+                    else {
+                        console.warn(`[Sumi Middleware] Invalid export structure in ${filePath}. Expected export default { _: function }. Skipping.`);
+                    }
+                }
+                catch (error) {
+                    console.error(`[Sumi Middleware] Error loading middleware file ${filePath}:`, error);
                 }
             }
-        });
+        }));
     }
-    applyGlobalMiddleware() {
+    async applyGlobalMiddleware() {
         if (fs.existsSync(this.middlewareDir)) {
-            fs.readdirSync(this.middlewareDir).forEach((file) => {
+            const files = fs.readdirSync(this.middlewareDir);
+            await Promise.all(files.map(async (file) => {
                 const filePath = path.join(this.middlewareDir, file);
                 if (this.isValidFile(filePath) &&
                     this.isMiddlewareFile(file, this.middlewareDir) &&
                     fs.statSync(filePath).size > 0) {
-                    const middleware = require(filePath).default._;
-                    if (typeof middleware === 'function') {
-                        this.app.use('*', middleware);
+                    try {
+                        console.log(`[Sumi Middleware] Importing global middleware: ${filePath}`);
+                        const middlewareModule = await import(filePath);
+                        if (middlewareModule.default &&
+                            typeof middlewareModule.default._ === 'function') {
+                            const middlewareDef = middlewareModule.default;
+                            const handler = middlewareDef._;
+                            console.log(`[Sumi Middleware] Applying global middleware from ${filePath}`);
+                            this.app.use('*', handler);
+                        }
+                        else {
+                            console.warn(`[Sumi Middleware] Invalid export structure in ${filePath}. Expected export default { _: function }. Skipping.`);
+                        }
+                    }
+                    catch (error) {
+                        console.error(`[Sumi Middleware] Error loading global middleware file ${filePath}:`, error);
                     }
                 }
-            });
+            }));
         }
-        if (this.logger)
+        if (this.logger) {
+            console.log(`[Sumi Middleware] Applying Hono logger globally.`);
             this.app.use('*', logger());
+        }
     }
-    reset(newApp) {
-        // Update the internal app instance
+    async reset(newApp) {
         this.app = newApp;
-        // Re-apply global middleware to the new app instance
-        this.applyGlobalMiddleware();
+        await this.applyGlobalMiddleware();
         console.log('[Sumi Reloader] MiddlewareHandler reset with new app instance.');
     }
     isValidFile(filePath) {

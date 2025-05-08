@@ -1,8 +1,8 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "0.2.1",
+  "version": "0.2.4",
   "bin": {
-    "sumi": "./bin/sumi-cli.ts"
+    "sumi": "bin/sumi-cli.ts"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

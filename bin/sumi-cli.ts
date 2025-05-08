@@ -140,9 +140,24 @@ const cliConfig = defineConfig({
         );
         console.log(`📄 Created package.json`);
 
+        // 2. Install dependencies
+        // Restore automatic dependency installation
         console.log(
-          '🟡 Skipping dependency installation (run manually or link)...'
+          `📦 Installing dependencies (@bethel-nz/sumi, hono, zod, @hono/zod-validator)...`
         );
+        try {
+          // Use the correct scoped package name
+          execSync('bun add @bethel-nz/sumi hono zod @hono/zod-validator', {
+            cwd: projectPath,
+            stdio: 'inherit',
+          });
+        } catch (error) {
+          console.error('❌ Failed to install dependencies.', error);
+          // Optional: Clean up created directory?
+          // Consider removing the partially created project folder on failure
+          // fs.rmSync(projectPath, { recursive: true, force: true });
+          process.exit(1);
+        }
 
         console.log(`⚙️ Initializing project configuration...`);
         await initProject(projectPath);
@@ -150,7 +165,6 @@ const cliConfig = defineConfig({
         console.log(`\n✅ Project '${projectName}' created successfully!`);
         console.log(`\nTo get started:`);
         console.log(`  cd ${projectName}`);
-        console.log(`  bun install`);
         console.log(`  bun run dev`);
       },
     }),

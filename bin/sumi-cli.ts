@@ -21,7 +21,7 @@ function generateSumiConfigContent(config: any): string {
   if (cleanConfig.static?.length === 0) delete cleanConfig.static;
 
   return `
-import type { SumiConfig } from 'sumi'; 
+import type { SumiConfig } from '@bethel-nz/sumi';
 
 const config: SumiConfig = {
   ${JSON.stringify(cleanConfig, null, 2).slice(1, -1)}
@@ -92,7 +92,7 @@ function generatePackageJsonContent(projectName: string): string {
 
 function generateServerTsContent(): string {
   return `
-import { Sumi } from 'sumi'; 
+import { Sumi } from '@bethel-nz/sumi';
 import config from '../sumi.config';
 
 const sumi = new Sumi(config);
@@ -150,6 +150,7 @@ const cliConfig = defineConfig({
         console.log(`\n✅ Project '${projectName}' created successfully!`);
         console.log(`\nTo get started:`);
         console.log(`  cd ${projectName}`);
+        console.log(`  bun install`);
         console.log(`  bun run dev`);
       },
     }),
@@ -178,7 +179,7 @@ const cliConfig = defineConfig({
         console.log(
           `🚀 Starting development server with --hot (${entryPoint})...`
         );
-        const command = `bun --hot ${entryPoint}`;
+        const command = `bun --hot --watch ${entryPoint}`;
         try {
           execSync(command, { stdio: 'inherit' });
         } catch (error) {

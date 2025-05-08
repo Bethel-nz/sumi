@@ -14,30 +14,38 @@
 
 ## Quick Start
 
-### Installation
+### Installation & Project Creation
+
+There are two main ways to create a new Sumi project using the CLI:
+
+**1. Using `bunx` (Recommended):**
+
+This command downloads and runs the Sumi CLI to create your project without installing the CLI globally.
 
 ```bash
-bun install sumi //WIP
+bunx @bethel-nz/sumi new <your-project-name>
 ```
 
-### Basic Server Setup
+**2. Global Installation (Optional):**
 
-```typescript
-import { Sumi } from 'sumi';
+If you plan to use the Sumi CLI frequently, you can install it globally (recommended):
 
-const sumi = new Sumi({
-  port: 3000,
-  routesDir: './routes',
-  middlewareDir: './routes/middleware'
-});
+```bash
+bun install -g @bethel-nz/sumi
+```
 
-sumi.burn();
-const fetch = sumi.fetch()
+Then, you can use the `sumi` command directly:
 
-export default {
- port: /*your port number*/,
- fetch
-}
+```bash
+sumi new <your-project-name>
+```
+
+After creating your project, navigate into the directory:
+
+```bash
+cd <your-project-name>
+bun install # Install dependencies like hono, zod etc.
+bun run dev   # Start the development server
 ```
 
 ### Directory Structure
@@ -74,7 +82,7 @@ export default {
   post: async (c) => {
     const body = await c.req.json();
     return c.json(body);
-  }
+  },
 };
 ```
 
@@ -86,14 +94,16 @@ export default {
   _: async (c, next) => {
     c.set('requestTime', Date.now());
     await next();
-  }
+  },
 };
 ```
 
-### 3. Plugin System (New!)
+### 3. Plugin System - (Beta)
 
 ```typescript
-const sumi = new Sumi({ /*...configs*/ });
+const sumi = new Sumi({
+  /*...configs*/
+});
 
 // Register a database plugin
 sumi.plugin(async (c, next) => {
@@ -107,7 +117,7 @@ export default {
     const db = c.plugin.use('db');
     const users = await db.query('SELECT * FROM users');
     return c.json(users);
-  }
+  },
 };
 ```
 
@@ -119,14 +129,16 @@ Sumi introduces Hibana (火花) for static file serving:
 import { Sumi, hibana } from 'sumi';
 
 const app = new Sumi({
-  port: 3000
+  port: 3000,
 });
 
 // Beta: Serve static files //WIP
-app.use(hibana({
-  root: './public',
-  prefix: '/static'
-}));
+app.use(
+  hibana({
+    root: './public',
+    prefix: '/static',
+  })
+);
 
 app.burn();
 ```
@@ -135,73 +147,12 @@ app.burn();
 
 ```typescript
 interface SumiOptions {
-  app?: Hono;            // Custom Hono instance
-  basePath?: string;     // Base path for all routes
-  routesDir?: string;    // Routes directory path
+  app?: Hono; // Custom Hono instance
+  basePath?: string; // Base path for all routes
+  routesDir?: string; // Routes directory path
   middlewareDir?: string; // Middleware directory path
-  logger?: boolean;      // Enable logging
+  logger?: boolean; // Enable logging
 }
-```
-
-## Development
-
-```bash
-# Install dependencies
-bun install
-
-# Start development server
-bun run dev
-
-# Build for production
-bun run build
-```
-
-## Migration from Wiggly
-
-1. Update your imports:
-
-```typescript
-// Old
-import Wiggly from 'wiggly';
-
-// New
-import { Sumi } from 'sumi';
-```
-
-2. Update initialization:
-
-```typescript
-// Old
-const app = new Wiggly({
-  base_path: '/api',
-  useLogger: true,
-  port:8080
-});
-
-// New
-const sumi = new Sumi({
-  basePath: '/api',
-  logger: true,
-  ...other configs
-});
-```
-
-3. Update server start:
-
-```typescript
-// Old
-app.serve();
-
-// New
-sumi.burn();
-const fetch = sumi.fetch()
-
-export default {
-  port: 5790,
-  fetch
-};
-
-//seems excessive but this is all in favor of bun
 ```
 
 ## License

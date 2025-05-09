@@ -14,7 +14,7 @@ export class MiddlewareHandler {
   private logger: boolean;
   private middlewareDir: string;
   private basePath: string;
-  private appliedMiddleware: Set<string> = new Set();
+  private appliedMiddleware: Map<string, Set<string>> = new Map();
 
   constructor(
     app: Hono,
@@ -39,10 +39,14 @@ export class MiddlewareHandler {
 
     await Promise.all(
       middlewareFiles.map(async (filePath) => {
-        if (this.appliedMiddleware.has(filePath)) {
-          console.log(
-            `[Sumi Middleware] Skipping already applied middleware: ${filePath}`
-          );
+        // Check if middleware is already applied to this route pattern
+        if (!this.appliedMiddleware.has(filePath)) {
+          this.appliedMiddleware.set(filePath, new Set());
+        }
+
+        const routePattern = `${basePath}/*`;
+        if (this.appliedMiddleware.get(filePath)?.has(routePattern)) {
+          // Skip silently
           return;
         }
 
@@ -52,7 +56,6 @@ export class MiddlewareHandler {
           fs.statSync(filePath).size > 0
         ) {
           try {
-            console.log(`[Sumi Middleware] Importing middleware: ${filePath}`);
             const middlewareModule = await import(filePath);
 
             if (
@@ -61,19 +64,18 @@ export class MiddlewareHandler {
             ) {
               const middlewareDef: RouteDefinition = middlewareModule.default;
               const handler = middlewareDef._;
-              console.log(
-                `[Sumi Middleware] Applying route middleware from ${filePath} to ${basePath}/*`
-              );
-              this.app.use(`${basePath}/*`, handler as any);
-              this.appliedMiddleware.add(filePath);
+              this.app.use(routePattern, handler as any);
+              this.appliedMiddleware.get(filePath)?.add(routePattern);
             } else {
               console.warn(
-                `[Sumi Middleware] Invalid export structure in ${filePath}. Expected export default { _: function }. Skipping.`
+                `Invalid middleware structure in ${path.basename(
+                  filePath
+                )}. Expected { _: function }.`
               );
             }
           } catch (error) {
             console.error(
-              `[Sumi Middleware] Error loading middleware file ${filePath}:`,
+              `Error loading middleware: ${path.basename(filePath)}:`,
               error
             );
           }
@@ -88,11 +90,15 @@ export class MiddlewareHandler {
       await Promise.all(
         files.map(async (file) => {
           const filePath = path.join(this.middlewareDir, file);
+          const routePattern = '*';
 
-          if (this.appliedMiddleware.has(filePath)) {
-            console.log(
-              `[Sumi Middleware] Skipping already applied global middleware: ${filePath}`
-            );
+          // Check if middleware is already applied to this route pattern
+          if (!this.appliedMiddleware.has(filePath)) {
+            this.appliedMiddleware.set(filePath, new Set());
+          }
+
+          if (this.appliedMiddleware.get(filePath)?.has(routePattern)) {
+            // Skip silently
             return;
           }
 
@@ -110,19 +116,15 @@ export class MiddlewareHandler {
               ) {
                 const middlewareDef: RouteDefinition = middlewareModule.default;
                 const handler = middlewareDef._;
-
-                this.app.use('*', handler as any);
-                this.appliedMiddleware.add(filePath);
+                this.app.use(routePattern, handler as any);
+                this.appliedMiddleware.get(filePath)?.add(routePattern);
               } else {
                 console.warn(
-                  `[Sumi Middleware] Invalid export structure in ${filePath}. Expected export default { _: function }. Skipping.`
+                  `Invalid middleware structure in ${file}. Expected { _: function }.`
                 );
               }
             } catch (error) {
-              console.error(
-                `[Sumi Middleware] Error loading global middleware file ${filePath}:`,
-                error
-              );
+              console.error(`Error loading global middleware: ${file}:`, error);
             }
           }
         })
@@ -138,9 +140,7 @@ export class MiddlewareHandler {
     this.app = newApp;
     this.appliedMiddleware.clear();
     await this.applyGlobalMiddleware();
-    console.log(
-      '[Sumi Reloader] MiddlewareHandler reset with new app instance.'
-    );
+    console.log('MiddlewareHandler reset with new app instance.');
   }
 
   private isValidFile(filePath: string): boolean {

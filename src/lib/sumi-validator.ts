@@ -83,11 +83,28 @@ export class SumiValidator {
             return;
         }
 
-        // Validate data
-        const validatedData = await schema.parseAsync(data);
+        // Validate data with proper error handling
+        const result = await schema.safeParseAsync(data);
+
+        if (!result.success) {
+          // Return detailed validation errors
+          const formattedErrors = result.error.errors.map((err) => ({
+            path: err.path.join('.'),
+            message: err.message,
+          }));
+
+          return c.json(
+            {
+              success: false,
+              message: 'Validation failed',
+              errors: formattedErrors,
+            },
+            400
+          );
+        }
 
         // Attach validated data to make it accessible with proper typing
-        (c as any).valid[target] = validatedData;
+        (c as any).valid[target] = result.data;
 
         // Add to request object for backward compatibility
         if (!(c.req as any).valid) {
@@ -102,7 +119,11 @@ export class SumiValidator {
         return c.json(
           {
             success: false,
-            error: error instanceof Error ? error.message : 'Validation error',
+            message: 'Validation error',
+            error:
+              error instanceof Error
+                ? error.message
+                : 'Unknown validation error',
           },
           400
         );

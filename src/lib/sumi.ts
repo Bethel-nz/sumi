@@ -121,25 +121,19 @@ class Sumi {
   private async build_routes(
     directory: string = this.default_dir
   ): Promise<void> {
-    console.log(
-      `[DEBUG] Attempting to build routes from directory: ${directory}`
-    );
-
     const ignoredDirs = ['dist', 'static', 'public', 'node_modules'];
     if (
       ignoredDirs.some((dir) => directory.includes(dir)) ||
       path.basename(directory).startsWith('.')
     ) {
-      console.log(`[DEBUG] Skipping ignored directory: ${directory}`);
       return;
     }
 
     if (!fs.existsSync(directory)) {
-      console.log(`[DEBUG] Directory does not exist: ${directory}`);
       return;
     }
     if (directory === this.default_dir && !fs.existsSync(this.default_dir)) {
-      console.log(`[DEBUG] Creating routes directory: ${this.default_dir}`);
+      console.log(`Creating routes directory: ${this.default_dir}`);
       fs.mkdirSync(this.default_dir, { recursive: true });
     }
     if (
@@ -147,13 +141,12 @@ class Sumi {
       !fs.existsSync(this.default_middleware_dir)
     ) {
       console.log(
-        `[DEBUG] Creating middleware directory: ${this.default_middleware_dir}`
+        `Creating middleware directory: ${this.default_middleware_dir}`
       );
       fs.mkdirSync(this.default_middleware_dir, { recursive: true });
     }
 
     const files = fs.readdirSync(directory);
-    console.log(`[DEBUG] Files in ${directory}:`, files);
     for (const file of files) {
       const file_path = path.join(directory, file);
       try {
@@ -224,7 +217,6 @@ class Sumi {
 
     const routeDefinition: RouteDefinition = routeModule.default;
     const route_path = this.convertToHonoRoute(filePath);
-    console.log(`[DEBUG] Route path: ${route_path}`);
     if (!route_path) return; // Skips if convertToHonoRoute decided it (e.g. for _ files if they ever got here)
 
     const currentFileDir = path.dirname(filePath);
@@ -349,7 +341,11 @@ class Sumi {
   }
 
   private generateServerInfo(): string {
-    return `🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered`;
+    return `
+🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered\n
+Server running on port ${this.config_port}
+usage: curl -X GET http://localhost:${this.config_port}${this.app_base_path}
+    `;
   }
 
   async burn(port?: number): Promise<void> {
@@ -357,13 +353,10 @@ class Sumi {
       // Use provided port or fall back to config port
       const serverPort = port || this.config_port;
 
-      this.clearRoutesAndMiddleware();
-      this.middlewareHandler.applyGlobalMiddleware();
-      await this.build_routes();
-
       if (process.env.NODE_ENV !== 'test') {
         console.clear();
 
+        await this.build_routes();
         // Setup hot reload watcher
         startFileWatcher(
           this.default_middleware_dir,
@@ -379,23 +372,6 @@ class Sumi {
               }
             }
 
-            // Clear and rebuild routes
-            this.clearRoutesAndMiddleware();
-            this.middlewareHandler.applyGlobalMiddleware();
-            await this.build_routes();
-
-            // Start server again if port was provided
-            if (serverPort) {
-              this.server = Bun.serve({
-                port: serverPort,
-                fetch: this.fetch(),
-              });
-              console.log(
-                `[Sumi Reloader] Server restarted on port ${serverPort}`
-              );
-            }
-
-            console.log('[Sumi Reloader] Routes reloaded.');
             console.log(this.generateServerInfo());
           }
         );
@@ -406,9 +382,14 @@ class Sumi {
             port: serverPort,
             fetch: this.fetch(),
           });
-          console.log(`Server started on port ${serverPort}`);
         }
+      } else {
+        // For test environment, just build routes without starting a server
+        this.clearRoutesAndMiddleware();
+        this.middlewareHandler.applyGlobalMiddleware();
+        await this.build_routes();
       }
+
       console.log(this.generateServerInfo());
     } catch (error) {
       console.error('Error during burn():', error);

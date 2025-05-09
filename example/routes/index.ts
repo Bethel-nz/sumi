@@ -7,6 +7,9 @@ const querySchema = z.object({
   age: z
     .string()
     .optional()
+    .refine((val) => !val || !isNaN(parseInt(val, 10)), {
+      message: 'Age must be a valid number',
+    })
     .transform((val) => (val ? parseInt(val, 10) : undefined)),
 });
 
@@ -25,15 +28,16 @@ export default createRoute({
     schema: { query: querySchema, param: paramSchema },
     handler: (c: ValidationContext<RouteSchema>) => {
       const query = c.valid.query!;
+      const currentId = c.get('id');
       console.log('[INDEX ROUTE] Route handler received query:', query);
 
-      // Make sure this appears by adding some extra logging
       console.log('[INDEX ROUTE] Processing request to root path');
 
       return c.json({
         message: `Hello, ${query.name}! This is the example route.`,
         age: query.age ?? 'not provided',
         query,
+        currentId,
       });
     },
   },

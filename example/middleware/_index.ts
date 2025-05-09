@@ -7,14 +7,11 @@ let requestId = 0;
 
 export default createMiddleware({
   _: async (c: Context, next: Next) => {
-    // Generate a unique ID for this execution
     const currentId = ++requestId;
+    c.set('id', currentId);
 
-    // Use base Hono Context for example
-    console.log(
-      `[Example Middleware ${currentId}] Request received for: ${c.req.url}`
-    );
+    // Only log request URL (not full debug info)
+    console.log(`Request received: ${c.req.method} ${c.req.path}`);
     await next();
-    console.log(`[Example Middleware ${currentId}] Response sent`);
   },
 });

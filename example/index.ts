@@ -5,7 +5,7 @@ import { defineConfig } from '../src/lib/sumi';
 const PORT = 3001;
 
 const exampleConfig = defineConfig({
-  logger: true,
+  logger: false,
   routesDir: path.resolve(__dirname, 'routes'),
   middlewareDir: path.resolve(__dirname, 'middleware'),
   port: PORT,

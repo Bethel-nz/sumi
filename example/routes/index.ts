@@ -25,7 +25,10 @@ export default createRoute({
     schema: { query: querySchema, param: paramSchema },
     handler: (c: ValidationContext<RouteSchema>) => {
       const query = c.valid.query!;
-      console.log('Route handler received query:', query);
+      console.log('[INDEX ROUTE] Route handler received query:', query);
+
+      // Make sure this appears by adding some extra logging
+      console.log('[INDEX ROUTE] Processing request to root path');
 
       return c.json({
         message: `Hello, ${query.name}! This is the example route.`,

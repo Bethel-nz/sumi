@@ -18,7 +18,7 @@ export type StaticRouteConfig = {
 };
 
 export type SumiConfig = {
-  app?: import('hono').Hono; // Use import type for Hono if app is optional
+  app?: import('hono').Hono;
   logger: boolean;
   basePath?: string;
   middlewareDir?: string;
@@ -30,8 +30,7 @@ export type SumiConfig = {
 // SumiContext extending Hono's Context
 export interface SumiContext extends Context {
   var: {
-    plugin: PluginManager;
-    // Add other framework variables here if needed
+    // plugin: PluginManager;
   };
 }
 

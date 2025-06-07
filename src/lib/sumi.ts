@@ -24,7 +24,7 @@ import {
 } from './types';
 import { SumiValidator } from './sumi-validator';
 
-class Sumi {
+export class Sumi {
   public app: Hono;
   private default_dir: string;
   private default_middleware_dir: string;
@@ -406,8 +406,6 @@ usage: curl -X GET http://localhost:${this.config_port}${this.app_base_path}
     return this.app.fetch.bind(this.app);
   }
 }
-
-export default Sumi;
 
 // --- Configuration Helper ---
 import { SumiConfig } from './types';

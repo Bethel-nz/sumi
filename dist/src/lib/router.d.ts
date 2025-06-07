@@ -1,37 +1,49 @@
-import { ZodSchema } from 'zod';
-import type { Next } from 'hono';
-import type { SumiContext } from './types';
-export type ValidationTarget = 'json' | 'form' | 'query' | 'param' | 'header' | 'cookie';
-export type ValidationSchemaMap = {
-    [key in ValidationTarget]?: ZodSchema;
+import { Context, Next } from 'hono';
+import { z, ZodSchema } from 'zod';
+export interface ValidationSchemaMap {
+    json?: ZodSchema;
+    form?: ZodSchema;
+    query?: ZodSchema;
+    param?: ZodSchema;
+    header?: ZodSchema;
+    cookie?: ZodSchema;
+}
+export type ValidatedData<T extends ValidationSchemaMap> = {
+    [K in keyof T]?: T[K] extends ZodSchema ? z.infer<T[K]> : unknown;
 };
-export type RouteMethodConfig = {
-    schema?: ValidationSchemaMap;
-    handler: (c: SumiContext) => Response | Promise<Response>;
+export type ValidationContext<T extends ValidationSchemaMap = ValidationSchemaMap> = Context & {
+    valid: ValidatedData<T>;
 };
 export interface RouteDefinition {
-    get?: RouteMethodConfig | ((c: SumiContext) => Response | Promise<Response>);
-    post?: RouteMethodConfig | ((c: SumiContext) => Response | Promise<Response>);
-    put?: RouteMethodConfig | ((c: SumiContext) => Response | Promise<Response>);
-    delete?: RouteMethodConfig | ((c: SumiContext) => Response | Promise<Response>);
-    patch?: RouteMethodConfig | ((c: SumiContext) => Response | Promise<Response>);
-    _?: RouteMethodConfig | ((c: SumiContext, next: Next) => Promise<void | Response>);
+    get?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
+    post?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
+    put?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
+    delete?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
+    patch?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
+    _?: MiddlewareHandler | ((c: ValidationContext<any>, next: Next) => Promise<void | Response>) | RouteConfig<any>;
+}
+export type RouteHandler = (c: Context) => Response | Promise<Response>;
+export type MiddlewareHandler = (c: Context, next: Next) => Promise<void | Response>;
+export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: ValidationContext<T>) => Response | Promise<Response>;
+export interface RouteConfig<T extends ValidationSchemaMap> {
+    schema: T;
+    handler: TypedRouteHandler<T>;
+}
+export interface TypedRouteConfig<T extends ValidationSchemaMap> {
+    schema: T;
+    handler: TypedRouteHandler<T>;
+}
+export interface MiddlewareConfig {
+    schema: ValidationSchemaMap;
+    handler: MiddlewareHandler;
 }
 /**
- * Type helper for defining Sumi routes with optional schema validation.
- * Enforces the structure for route definitions and provides type checking.
- * @param definition The route definition object.
- * @returns The same definition object, used for type inference.
+ * Creates a route definition with optional validation and type safety
  */
-export declare function createRoute<T extends RouteDefinition>(definition: T): T;
-export type MiddlewareHandlerFunction = (c: SumiContext, next: Next) => Promise<void | Response>;
-export interface MiddlewareDefinition {
-    _: MiddlewareHandlerFunction;
-}
+export declare function createRoute<T extends RouteDefinition>(config: T): any;
 /**
- * Type helper for defining Sumi middleware.
- * Enforces the structure for middleware definitions.
- * @param definition The middleware definition object.
- * @returns The same definition object, used for type inference.
+ * Creates middleware with optional validation
  */
-export declare function createMiddleware(definition: MiddlewareDefinition): MiddlewareDefinition;
+export declare function createMiddleware(config: {
+    _: any;
+}): any;

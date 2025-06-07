@@ -1,11 +1,12 @@
-import { Context, Hono } from 'hono';
-import { PluginManager } from './pluginmanager';
-type StaticRouteConfig = {
+import { Context, HonoRequest } from 'hono';
+import { z, ZodSchema, ZodObject } from 'zod';
+export type ValidationTarget = 'json' | 'form' | 'query' | 'param' | 'header' | 'cookie';
+export type StaticRouteConfig = {
     path: string;
     root: string;
 };
-type SumiConfig = {
-    app?: Hono;
+export type SumiConfig = {
+    app?: import('hono').Hono;
     logger: boolean;
     basePath?: string;
     middlewareDir?: string;
@@ -13,7 +14,12 @@ type SumiConfig = {
     port: number;
     static?: StaticRouteConfig[];
 };
-interface SumiContext extends Context {
-    plugin: PluginManager;
+export interface SumiContext extends Context {
+    var: {};
 }
-export { SumiConfig, StaticRouteConfig, SumiContext };
+export type TypedValid<T extends Record<string, ZodSchema | ZodObject<{}>>> = {
+    <K extends keyof T & ValidationTarget>(target: K): z.infer<T[K]>;
+};
+export interface TypedRequest<T extends Record<string, ZodSchema | ZodObject<{}>>> extends HonoRequest {
+    valid: TypedValid<T>;
+}

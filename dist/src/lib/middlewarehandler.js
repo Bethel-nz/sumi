@@ -6,6 +6,7 @@ export class MiddlewareHandler {
     logger;
     middlewareDir;
     basePath;
+    appliedMiddleware = new Map();
     constructor(app, logger, middlewareDir, basePath) {
         this.app = app;
         this.logger = logger;
@@ -18,25 +19,33 @@ export class MiddlewareHandler {
             path.join(directory, '_index.ts'),
         ];
         await Promise.all(middlewareFiles.map(async (filePath) => {
+            // Check if middleware is already applied to this route pattern
+            if (!this.appliedMiddleware.has(filePath)) {
+                this.appliedMiddleware.set(filePath, new Set());
+            }
+            const routePattern = `${basePath}/*`;
+            if (this.appliedMiddleware.get(filePath)?.has(routePattern)) {
+                // Skip silently
+                return;
+            }
             if (fs.existsSync(filePath) &&
                 this.isValidFile(filePath) &&
                 fs.statSync(filePath).size > 0) {
                 try {
-                    console.log(`[Sumi Middleware] Importing middleware: ${filePath}`);
                     const middlewareModule = await import(filePath);
                     if (middlewareModule.default &&
                         typeof middlewareModule.default._ === 'function') {
                         const middlewareDef = middlewareModule.default;
                         const handler = middlewareDef._;
-                        console.log(`[Sumi Middleware] Applying route middleware from ${filePath} to ${basePath}/*`);
-                        this.app.use(`${basePath}/*`, handler);
+                        this.app.use(routePattern, handler);
+                        this.appliedMiddleware.get(filePath)?.add(routePattern);
                     }
                     else {
-                        console.warn(`[Sumi Middleware] Invalid export structure in ${filePath}. Expected export default { _: function }. Skipping.`);
+                        console.warn(`Invalid middleware structure in ${path.basename(filePath)}. Expected { _: function }.`);
                     }
                 }
                 catch (error) {
-                    console.error(`[Sumi Middleware] Error loading middleware file ${filePath}:`, error);
+                    console.error(`Error loading middleware: ${path.basename(filePath)}:`, error);
                 }
             }
         }));
@@ -46,38 +55,46 @@ export class MiddlewareHandler {
             const files = fs.readdirSync(this.middlewareDir);
             await Promise.all(files.map(async (file) => {
                 const filePath = path.join(this.middlewareDir, file);
+                const routePattern = '*';
+                // Check if middleware is already applied to this route pattern
+                if (!this.appliedMiddleware.has(filePath)) {
+                    this.appliedMiddleware.set(filePath, new Set());
+                }
+                if (this.appliedMiddleware.get(filePath)?.has(routePattern)) {
+                    // Skip silently
+                    return;
+                }
                 if (this.isValidFile(filePath) &&
                     this.isMiddlewareFile(file, this.middlewareDir) &&
                     fs.statSync(filePath).size > 0) {
                     try {
-                        console.log(`[Sumi Middleware] Importing global middleware: ${filePath}`);
                         const middlewareModule = await import(filePath);
                         if (middlewareModule.default &&
                             typeof middlewareModule.default._ === 'function') {
                             const middlewareDef = middlewareModule.default;
                             const handler = middlewareDef._;
-                            console.log(`[Sumi Middleware] Applying global middleware from ${filePath}`);
-                            this.app.use('*', handler);
+                            this.app.use(routePattern, handler);
+                            this.appliedMiddleware.get(filePath)?.add(routePattern);
                         }
                         else {
-                            console.warn(`[Sumi Middleware] Invalid export structure in ${filePath}. Expected export default { _: function }. Skipping.`);
+                            console.warn(`Invalid middleware structure in ${file}. Expected { _: function }.`);
                         }
                     }
                     catch (error) {
-                        console.error(`[Sumi Middleware] Error loading global middleware file ${filePath}:`, error);
+                        console.error(`Error loading global middleware: ${file}:`, error);
                     }
                 }
             }));
         }
         if (this.logger) {
-            console.log(`[Sumi Middleware] Applying Hono logger globally.`);
             this.app.use('*', logger());
         }
     }
     async reset(newApp) {
         this.app = newApp;
+        this.appliedMiddleware.clear();
         await this.applyGlobalMiddleware();
-        console.log('[Sumi Reloader] MiddlewareHandler reset with new app instance.');
+        console.log('MiddlewareHandler reset with new app instance.');
     }
     isValidFile(filePath) {
         return ['.js', '.ts'].includes(path.extname(filePath));

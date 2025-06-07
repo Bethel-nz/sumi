@@ -1,26 +1,66 @@
+import { SumiValidator } from './sumi-validator';
 /**
- * Type helper for defining Sumi routes with optional schema validation.
- * Enforces the structure for route definitions and provides type checking.
- * @param definition The route definition object.
- * @returns The same definition object, used for type inference.
+ * Creates a route definition with optional validation and type safety
  */
-export function createRoute(definition) {
-    // This is primarily a type utility; the actual processing happens in Sumi core.
-    return definition;
+export function createRoute(config) {
+    const processedConfig = {};
+    // Process each method
+    Object.entries(config).forEach(([method, handlerOrConfig]) => {
+        if (typeof handlerOrConfig === 'function') {
+            processedConfig[method] = handlerOrConfig; // TypeScript will be satisfied with this
+        }
+        else if (handlerOrConfig &&
+            'schema' in handlerOrConfig &&
+            'handler' in handlerOrConfig) {
+            // Handler with schema validation
+            const { schema, handler } = handlerOrConfig;
+            // Create validators
+            const validators = SumiValidator.createValidators(schema);
+            if (method === '_') {
+                // Middleware handling
+                processedConfig[method] = async (c, next) => {
+                    // Apply each validator in sequence
+                    let currentIndex = -1;
+                    const runNextValidator = async () => {
+                        currentIndex++;
+                        if (currentIndex < validators.length) {
+                            return validators[currentIndex](c, runNextValidator);
+                        }
+                        else {
+                            // All validators passed, run the original handler
+                            return handlerOrConfig.handler(c, next);
+                        }
+                    };
+                    return runNextValidator();
+                };
+            }
+            else {
+                // Route handling
+                processedConfig[method] = async (c) => {
+                    c.valid = {};
+                    // Apply each validator in sequence
+                    for (const validator of validators) {
+                        let canContinue = true;
+                        const response = await validator(c, () => {
+                            canContinue = true;
+                        });
+                        // If validator returned a response, return it (validation failed)
+                        if (response)
+                            return response;
+                        // If validator indicated not to continue, stop
+                        if (!canContinue)
+                            return new Response('Validation error', { status: 400 });
+                    }
+                    return handler(c);
+                };
+            }
+        }
+    });
+    return processedConfig;
 }
 /**
- * Type helper for defining Sumi middleware.
- * Enforces the structure for middleware definitions.
- * @param definition The middleware definition object.
- * @returns The same definition object, used for type inference.
+ * Creates middleware with optional validation
  */
-export function createMiddleware(definition) {
-    // Primarily a type utility.
-    if (typeof definition._ !== 'function') {
-        // Basic runtime check for safety, could be enhanced
-        throw new Error("Middleware definition must include a handler function under the '_' key.");
-    }
-    return definition;
+export function createMiddleware(config) {
+    return createRoute(config);
 }
-// Potentially re-export SumiContext if it makes sense here
-// export type { SumiContext } from './types';

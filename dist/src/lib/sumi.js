@@ -1,38 +1,28 @@
+// sumi.ts
 import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
+import { serveStatic } from 'hono/bun';
 import { RouteParser } from './RouteParser';
 import { startFileWatcher } from './filewatcher';
 import { MiddlewareHandler } from './middlewarehandler';
-import { PluginManager } from './pluginmanager';
-import { zValidator } from '@hono/zod-validator';
-/**
- * Sumi - A lightweight file based routing web framework built on top of Hono
- */
-class Sumi {
+import { ErrorHandler } from './errorHandler';
+import { SumiValidator } from './sumi-validator';
+export class Sumi {
     app;
     default_dir;
     default_middleware_dir;
     middlewareHandler;
     app_base_path;
     logger;
-    pluginManager;
     processedPaths = new Set();
     uniqueRoutes = new Set();
     staticConfig = [];
-    /**
-     * Initializes a new instance of the Sumi class.
-     * @param {Object} default_args - Configuration options for Sumi
-     * @param {Hono} [default_args.app] - Optional Hono instance to use
-     * @param {boolean} default_args.logger - Enable/disable logging
-     * @param {string} [default_args.basePath] - Base path for all routes (e.g., '/api/v1')
-     * @param {string} [default_args.middlewareDir] - Directory for middleware files
-     * @param {string} [default_args.routesDir] - Directory for route files
-     * @param {number} default_args.port - Port number for the server
-     * @param {StaticRouteConfig[]} [default_args.static] - Static route configurations
-     */
+    server = null; // Store server reference for reloading
+    config_port;
     constructor(default_args) {
         this.app = default_args.app || new Hono();
+        this.config_port = default_args.port;
         if (default_args.basePath) {
             this.app_base_path = default_args.basePath;
             this.app = this.app.basePath(this.app_base_path);
@@ -45,27 +35,24 @@ class Sumi {
         this.default_dir = default_args.routesDir
             ? path.resolve(default_args.routesDir)
             : path.resolve('routes');
-        // Apply global middleware once
         this.middlewareHandler = new MiddlewareHandler(this.app, this.logger, this.default_middleware_dir, this.app_base_path);
         this.middlewareHandler.applyGlobalMiddleware();
-        this.pluginManager = new PluginManager(this.app);
+        this.staticConfig.forEach((config) => {
+            if (config.path && config.root) {
+                this.app.use(config.path, serveStatic({ root: config.root }));
+            }
+        });
+        // Error Handler
+        this.app.onError((err, c) => {
+            ErrorHandler.handleError(err, `Request to ${c.req.path} by ${c.req.method}`);
+            return c.json({ error: 'Internal Server Error', message: err.message }, 500);
+        });
     }
-    /**
-     * Validates if a file has a supported extension.
-     * @param file_path The path of the file to validate.
-     * @returns True if valid, else false.
-     */
     is_valid_file(file_path) {
         return ['.js', '.ts'].includes(path.extname(file_path));
     }
-    /**
-     * Converts a file path to a Hono-compatible route.
-     * @param filePath The file path to convert.
-     * @returns The Hono route path.
-     */
     convertToHonoRoute(filePath) {
         const routeName = path.basename(filePath, path.extname(filePath));
-        // Skip hibana and files starting with underscore
         if (routeName === 'hibana' || routeName.startsWith('_'))
             return '';
         const isIndexFile = routeName === 'index';
@@ -75,179 +62,172 @@ class Sumi {
             .split(path.sep)
             .map(RouteParser.parseSegment)
             .filter(Boolean);
-        const finalRouteName = isIndexFile ? '' : `/${routeName}`;
-        const routePath = `/${[...pathSegments, finalRouteName].join('/')}`
+        let finalRouteNamePart = isIndexFile ? '' : routeName;
+        if (finalRouteNamePart && !finalRouteNamePart.startsWith('/')) {
+            finalRouteNamePart = `/${finalRouteNamePart}`;
+        }
+        let routePath = `/${pathSegments.join('/')}${finalRouteNamePart}`
             .replace(/\/+/g, '/')
             .replace(/\/$/, '');
-        // Handle root index file
-        if (routePath === '/' || routePath === '/.' || routePath === '')
-            return '/';
+        if (filePath === path.join(this.default_dir, 'index.ts') ||
+            filePath === path.join(this.default_dir, 'index.js')) {
+            routePath = '/';
+        }
+        else if (routePath === '') {
+            routePath = '/';
+        }
         return routePath.replace(/\[(\w+)\]/g, ':$1');
     }
-    /**
-     * Builds routes by scanning the specified directory.
-     * @param directory The directory to scan.
-     * @param base_path The base path for the routes.
-     */
-    build_routes(directory = this.default_dir, base_path = '') {
-        // Skip certain directories
-        const ignoredDirs = ['dist', 'static', 'public'];
-        if (ignoredDirs.some((dir) => directory.includes(dir)))
+    async build_routes(directory = this.default_dir) {
+        const ignoredDirs = ['dist', 'static', 'public', 'node_modules'];
+        if (ignoredDirs.some((dir) => directory.includes(dir)) ||
+            path.basename(directory).startsWith('.')) {
             return;
-        // Create initial directories if they don't exist
-        if (!fs.existsSync(this.default_dir)) {
+        }
+        if (!fs.existsSync(directory)) {
+            return;
+        }
+        if (directory === this.default_dir && !fs.existsSync(this.default_dir)) {
             console.log(`Creating routes directory: ${this.default_dir}`);
             fs.mkdirSync(this.default_dir, { recursive: true });
-            // Create a sample index.ts if it doesn't exist
-            const indexPath = path.join(this.default_dir, 'index.ts');
-            if (!fs.existsSync(indexPath)) {
-                return;
-            }
-            if (!fs.existsSync(this.default_middleware_dir)) {
-                console.log(`Creating middleware directory: ${this.default_middleware_dir}`);
-                fs.mkdirSync(this.default_middleware_dir, { recursive: true });
-                // Create a sample middleware if it doesn't exist
-                const middlewarePath = path.join(this.default_middleware_dir, '_middleware.ts');
-                if (!fs.existsSync(middlewarePath)) {
-                    return;
+        }
+        if (directory === this.default_dir &&
+            !fs.existsSync(this.default_middleware_dir)) {
+            console.log(`Creating middleware directory: ${this.default_middleware_dir}`);
+            fs.mkdirSync(this.default_middleware_dir, { recursive: true });
+        }
+        const files = fs.readdirSync(directory);
+        for (const file of files) {
+            const file_path = path.join(directory, file);
+            try {
+                const stat = fs.statSync(file_path);
+                if (stat.isDirectory()) {
+                    await this.handleDirectory(file_path);
+                }
+                else if (this.is_valid_file(file_path) && stat.size > 0) {
+                    await this.handleFile(file_path);
                 }
             }
+            catch (error) {
+                // console.warn(`[Sumi Router] Warning processing ${file_path}: ${error.message}`);
+            }
         }
-        // Continue with existing route building logic
-        if (directory.includes('dist'))
+    }
+    async handleDirectory(dirPath) {
+        await this.build_routes(dirPath); // Await the recursive call
+        const indexExtensions = ['.ts', '.js'];
+        for (const ext of indexExtensions) {
+            const indexPath = path.join(dirPath, `index${ext}`);
+            if (fs.existsSync(indexPath) && this.is_valid_file(indexPath)) {
+                // Check if file has content before processing
+                const stat = fs.statSync(indexPath);
+                if (stat.size > 0) {
+                    await this.processRouteFile(indexPath);
+                }
+                break;
+            }
+        }
+    }
+    async handleFile(filePath) {
+        const baseName = path.basename(filePath);
+        // Middleware files (e.g., _index.ts, _middleware.ts) are not routes
+        // and are handled by the MiddlewareHandler.
+        if (baseName.startsWith('_')) {
             return;
-        const files = fs.readdirSync(directory);
-        files.forEach((file) => {
-            const file_path = path.join(directory, file);
-            const stat = fs.statSync(file_path);
-            if (stat.isDirectory()) {
-                this.handleDirectory(file_path, base_path);
-            }
-            else if (this.is_valid_file(file_path) && stat.size > 0) {
-                this.handleFile(file_path, directory);
-            }
-        });
-    }
-    async handleDirectory(dirPath, basePath) {
-        const segment = RouteParser.parseSegment(path.basename(dirPath));
-        // Note: build_routes itself isn't awaited here, might process in parallel
-        this.build_routes(dirPath, `${basePath}/${segment}`);
-        const indexPath = path.join(dirPath, 'index.ts');
-        if (fs.existsSync(indexPath) && this.is_valid_file(indexPath)) {
-            await this.processRouteFile(indexPath, basePath); // Await the async processing
         }
+        // Index files within subdirectories (e.g., routes/api/index.ts)
+        // are handled by the handleDirectory method for that subdirectory.
+        // The root index file (e.g., routes/index.ts) should be processed by this method.
+        const isIndexInSubdirectory = baseName.startsWith('index.') &&
+            path.dirname(filePath) !== this.default_dir;
+        if (isIndexInSubdirectory) {
+            return;
+        }
+        await this.processRouteFile(filePath);
     }
-    async handleFile(filePath, baseDir) {
-        await this.processRouteFile(filePath, baseDir); // Await the async processing
-    }
-    async processRouteFile(filePath, baseDir) {
+    async processRouteFile(filePath) {
         let routeModule;
+        const relativeFilePath = path.relative(process.cwd(), filePath);
         try {
-            console.log(`[Sumi Router] Importing route: ${filePath}`);
-            routeModule = await import(filePath);
+            routeModule = await import(`${filePath}?v=${Date.now()}`);
             if (!routeModule.default) {
-                console.warn(`[Sumi Router] No default export found in route file: ${filePath}. Skipping.`);
+                console.warn(`[Sumi Router] No default export: ${relativeFilePath}.`);
                 return;
             }
         }
         catch (error) {
-            console.error(`[Sumi Router] Error loading route file ${filePath}:`, error);
+            console.error(`[Sumi Router] Error loading ${relativeFilePath}:`, error);
             return;
         }
         const routeDefinition = routeModule.default;
         const route_path = this.convertToHonoRoute(filePath);
         if (!route_path)
-            return;
-        // Apply file-based middleware (if any - this might need rethinking with CreateRoute)
-        if (!this.processedPaths.has(route_path)) {
-            // TODO: Revisit how file-based _middleware fits with CreateRoute definition?
-            // Maybe CreateRoute needs a top-level middleware array?
-            this.middlewareHandler.applyMiddleware(baseDir, route_path);
-            this.processedPaths.add(route_path);
+            return; // Skips if convertToHonoRoute decided it (e.g. for _ files if they ever got here)
+        const currentFileDir = path.dirname(filePath);
+        if (!this.processedPaths.has(currentFileDir)) {
+            this.middlewareHandler.applyMiddleware(currentFileDir, route_path);
+            this.processedPaths.add(currentFileDir);
         }
-        // Process each method defined in the route object
         Object.keys(routeDefinition).forEach((method) => {
             const methodKey = method;
             const methodDefinition = routeDefinition[methodKey];
             let userHandler;
             let validationSchemas;
             if (!methodDefinition)
-                return; // Skip if method is undefined
-            // Determine handler and schemas based on the definition structure
+                return;
             if (typeof methodDefinition === 'function') {
                 userHandler = methodDefinition;
                 validationSchemas = undefined;
             }
             else if (typeof methodDefinition === 'object' &&
+                methodDefinition.handler &&
                 typeof methodDefinition.handler === 'function') {
-                userHandler = methodDefinition.handler;
-                validationSchemas = methodDefinition.schema;
+                // This now uses RouteConfig instead of ProcessedRouteMethodConfig
+                const processedConfig = methodDefinition;
+                userHandler = processedConfig.handler;
+                validationSchemas = processedConfig.schema;
             }
             else {
-                // Handle cases where the definition might be invalid (e.g., object without handler)
-                if (methodKey !== '_') {
-                    // Allow middleware ('_') potentially being just an object
-                    console.warn(`[Sumi Router] Invalid route definition for method "${method}" in ${filePath}. Skipping.`);
+                if (method !== '_') {
+                    console.warn(`[Sumi Router] Invalid route structure for method "${String(method)}" in ${relativeFilePath}. Ensure it's a function or an object with a handler.`);
                 }
                 return;
             }
             const routeKey = `${method.toUpperCase()}:${route_path}`;
-            if (this.uniqueRoutes.has(routeKey)) {
-                return; // Skip if already registered (e.g., via handleDirectory/handleFile overlap)
+            if (this.uniqueRoutes.has(routeKey) && method !== '_') {
+                return;
             }
             this.uniqueRoutes.add(routeKey);
-            const middlewares = []; // Array to hold validators
-            // Add validators if schemas are defined
+            const middlewaresToApply = [];
             if (validationSchemas) {
-                Object.keys(validationSchemas).forEach((target) => {
-                    const schema = validationSchemas[target];
-                    if (schema) {
-                        console.log(`[Sumi Router] Applying validation for ${target} on ${method.toUpperCase()} ${route_path}`);
-                        middlewares.push(zValidator(target, schema));
-                    }
-                });
+                const validators = SumiValidator.createValidators(validationSchemas);
+                if (validators.length > 0)
+                    middlewaresToApply.push(...validators);
             }
-            // Register route with Hono, applying middleware first, then the handler
             try {
-                console.log(`[Sumi Router] Registering route: ${method.toUpperCase()} ${route_path}`);
-                // Spread middleware array BEFORE the user handler
-                this.applyRouteMethod(method, route_path, ...middlewares, userHandler);
+                // Pass the original method string here
+                this.applyRouteMethod(method, route_path, ...middlewaresToApply, userHandler);
             }
             catch (error) {
-                console.error(`[Sumi Router] Error applying route method ${method.toUpperCase()} for path ${route_path} from file ${filePath}:`, error);
+                console.error(`[Sumi Router] Error applying ${method.toUpperCase()} for ${route_path} from ${relativeFilePath}:`, error);
             }
-        }); // End forEach method
+        });
     }
-    // Update applyRouteMethod to accept multiple handlers
-    applyRouteMethod(method, routePath, ...handlers // Accept multiple handlers (validators + final handler)
-    ) {
-        switch (method.toLowerCase()) {
-            case 'get':
-                this.app.get(routePath, ...handlers);
-                break;
-            case 'post':
-                this.app.post(routePath, ...handlers);
-                break;
-            case 'put':
-                this.app.put(routePath, ...handlers);
-                break;
-            case 'delete':
-                this.app.delete(routePath, ...handlers);
-                break;
-            case 'patch':
-                this.app.patch(routePath, ...handlers);
-                break;
-            case '_': // For middleware defined via CreateRoute
-                this.app.use(routePath, ...handlers);
-                break;
-            default:
-                console.log(`[Sumi Router] Unknown or unsupported method "${method}" in route definition.`);
+    applyRouteMethod(method, routePath, ...handlers) {
+        const honoMethod = method.toLowerCase();
+        if (typeof this.app[honoMethod] === 'function') {
+            this.app[honoMethod](routePath, ...handlers);
+        }
+        else if (method === '_') {
+            this.app.use(routePath, ...handlers);
+        }
+        else {
+            console.warn(`[Sumi Router] Unknown Hono method "${method}" for route "${routePath}".`);
         }
     }
     clearRoutesAndMiddleware() {
         // Create a new Hono instance to effectively clear routes
         const newApp = new Hono();
-        // Re-apply base path if it exists
         if (this.app_base_path) {
             this.app = newApp.basePath(this.app_base_path);
         }
@@ -256,83 +236,76 @@ class Sumi {
         }
         // Reset middleware handler with the new app instance
         this.middlewareHandler.reset(this.app);
-        // Clear tracking sets
+        this.staticConfig.forEach((config) => {
+            if (config.path && config.root) {
+                this.app.use(config.path, serveStatic({ root: config.root }));
+            }
+        });
+        // Re-apply error handler to the new app instance
+        this.app.onError((err, c) => {
+            ErrorHandler.handleError(err, `Request to ${c.req.path} by ${c.req.method}`);
+            return c.json({ error: 'Internal Server Error', message: err.message }, 500);
+        });
         this.processedPaths.clear();
         this.uniqueRoutes.clear();
-        console.log('[Sumi Reloader] Cleared routes and internal state.');
     }
     generateServerInfo() {
         return `
-🔥 Sumi v1.0 is burning hot and ready to serve!
-🛣️  Routes: ${this.uniqueRoutes.size} route(s) registered
-  `;
+🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered\n
+Server running on port ${this.config_port}
+usage: curl -X GET http://localhost:${this.config_port}${this.app_base_path}
+    `;
     }
-    /**
-     * Registers a plugin to be used across the application
-     * @param {Function} handler - Plugin handler function
-     * @param {Context} handler.c - Hono context
-     * @param {Next} handler.next - Next function for middleware chain
-     * @returns {void}
-     * @example
-     * sumi.plugin(async (c, next) => {
-     *   c.plugin.set('db', database);
-     *   await next();
-     * });
-     */
-    plugin(handler) {
-        this.pluginManager.register(handler);
-    }
-    /**
-     * Initializes the server and starts watching for file changes
-     * @returns {Promise<void>}
-     * @throws {Error} If initialization fails
-     * @example
-     * sumi.burn();
-     */
-    burn() {
+    async burn(port) {
         try {
-            this.processedPaths.clear();
-            this.build_routes();
-            // Clear console after initial setup and watcher start
-            console.clear();
-            startFileWatcher(this.default_middleware_dir, this.default_dir, () => {
-                this.middlewareHandler.applyGlobalMiddleware();
-                this.build_routes();
+            // Use provided port or fall back to config port
+            const serverPort = port || this.config_port;
+            if (process.env.NODE_ENV !== 'test') {
+                console.clear();
+                await this.build_routes();
+                // Setup hot reload watcher
+                startFileWatcher(this.default_middleware_dir, this.default_dir, async () => {
+                    // Kill current server if it exists
+                    if (this.server) {
+                        try {
+                            this.server.stop();
+                            this.server = null;
+                        }
+                        catch (err) {
+                            console.error('[Sumi Reloader] Error stopping server:', err);
+                        }
+                    }
+                    console.log(this.generateServerInfo());
+                });
+                // Start server if port is provided
+                if (serverPort) {
+                    this.server = Bun.serve({
+                        port: serverPort,
+                        fetch: this.fetch(),
+                    });
+                }
+            }
+            else {
+                // For test environment, just build routes without starting a server
                 this.clearRoutesAndMiddleware();
-            });
+                this.middlewareHandler.applyGlobalMiddleware();
+                await this.build_routes();
+            }
+            console.log(this.generateServerInfo());
         }
         catch (error) {
             console.error('Error during burn():', error);
             throw error;
         }
     }
-    /**
-     * Returns the fetch handler for the Hono app
-     * @returns {Function} Bound fetch handler for the application
-     * @throws {Error} If app instance is not found
-     * @example
-     * const fetch = sumi.fetch();
-     * const response = await fetch('/api/users');
-     */
     fetch() {
-        try {
-            if (!this.app) {
-                console.log('no app instance found');
-                return;
-            }
-            return this.app.fetch.bind(this.app);
+        if (!this.app) {
+            console.error('[Sumi Fetch] Hono app instance not found.');
+            return async (_req) => new Response('Sumi app not initialized', { status: 500 });
         }
-        catch (error) {
-            console.error('Error getting fetch instance:', error);
-            throw error;
-        }
+        return this.app.fetch.bind(this.app);
     }
 }
-export default Sumi;
-/**
- * Type helper for defining Sumi configuration.
- * Provides type checking and auto-completion for sumi.config.ts files.
- */
 export function defineConfig(config) {
     return config;
 }

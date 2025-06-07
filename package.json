@@ -1,6 +1,6 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "bin": {
     "sumi": "bin/sumi-cli.ts"
   },
@@ -12,9 +12,9 @@
   },
   "exports": {
     ".": {
-      "require": "./dist/lib/sumi.js",
-      "import": "./dist/lib/sumi.js",
-      "types": "./dist/lib/sumi.d.ts"
+      "require": "./dist/index.js",
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
     },
     "./router": {
       "require": "./dist/lib/router.js",

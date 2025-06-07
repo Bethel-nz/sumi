@@ -1,6 +1,6 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "bin": {
     "sumi": "bin/sumi-cli.ts"
   },
@@ -17,9 +17,9 @@
       "types": "./dist/index.d.ts"
     },
     "./router": {
-      "require": "./dist/lib/router.js",
-      "import": "./dist/lib/router.js",
-      "types": "./dist/lib/router.d.ts"
+      "require": "./dist/src/lib/router.js",
+      "import": "./dist/src/lib/router.js",
+      "types": "./dist/src/lib/router.d.ts"
     }
   },
   "files": [

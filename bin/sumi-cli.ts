@@ -148,11 +148,9 @@ const cliConfig = defineConfig({
         console.log(`📄 Created package.json`);
 
         // Always install dependencies from npm
-        console.log(
-          `📦 Installing dependencies (@bethel-nz/sumi, hono, zod, @hono/zod-validator)...`
-        );
+        console.log(`📦 Installing dependencies...`);
         try {
-          execSync('bun add @bethel-nz/sumi hono zod @hono/zod-validator', {
+          execSync('bun add @bethel-nz/sumi hono zod', {
             cwd: projectPath,
             stdio: 'inherit',
           });

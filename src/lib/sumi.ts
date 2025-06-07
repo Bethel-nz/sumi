@@ -347,7 +347,7 @@ export class Sumi {
     } route(s) registered\n
 Server running on port ${this.config_port}
 usage: curl -X GET http://localhost:${this.config_port}${
-      this.app_base_path && this.app_base_path
+      this.app_base_path === undefined ? '' : this.app_base_path
     }
     `;
   }

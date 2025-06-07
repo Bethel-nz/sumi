@@ -1,4 +1,4 @@
-export { Sumi } from './src/lib/sumi';
+export { Sumi, defineConfig } from './src/lib/sumi';
 export { hibana } from './src/hibana';
 export type {
   SumiConfig,

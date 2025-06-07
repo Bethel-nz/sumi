@@ -1,5 +1,5 @@
 import path from 'path';
-import Sumi from '../src/lib/sumi';
+import { Sumi } from '../src/lib/sumi';
 import { defineConfig } from '../src/lib/sumi';
 
 const PORT = 3001;

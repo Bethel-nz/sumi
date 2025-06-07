@@ -342,9 +342,13 @@ export class Sumi {
 
   private generateServerInfo(): string {
     return `
-🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered\n
+🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${
+      this.uniqueRoutes.size
+    } route(s) registered\n
 Server running on port ${this.config_port}
-usage: curl -X GET http://localhost:${this.config_port}${this.app_base_path}
+usage: curl -X GET http://localhost:${this.config_port}${
+      this.app_base_path && this.app_base_path
+    }
     `;
   }
 

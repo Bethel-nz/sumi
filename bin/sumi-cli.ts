@@ -32,9 +32,9 @@ export default defineConfig({
 
 function generateIndexRouteContent(): string {
   return `
-import { Context } from 'hono';
 import { z } from 'zod';
 import { createRoute } from '@bethel-nz/sumi/router';
+import { ValidationContext } from '@bethel-nz/sumi/router';
 
 const querySchema = z.object({
   name: z.string().optional().default('World'),
@@ -43,16 +43,17 @@ const querySchema = z.object({
 export default createRoute({
   get: {
     schema: {
-      query: querySchema
+      query: querySchema,
     },
-    handler: (c: Context) => {
-      const { name } = c.req.valid('query');
+    handler: (c: ValidationContext<{ query: typeof querySchema }>) => {
+      const { name } = c.valid.query!;
       return c.json({
-        message: \`Hello, \${name}! This is the root route with validation.\`
+        message: \`Hello, \${name}! This is the root route with validation.\`,
       });
-    }
+    },
   },
 });
+
   `;
 }
 
@@ -106,10 +107,7 @@ const sumi = new Sumi(config);
 
 await sumi.burn();
 
-export default {
-  port: config.port ?? 3000,
-  fetch: sumi.fetch(),
-};
+
     `;
 }
 

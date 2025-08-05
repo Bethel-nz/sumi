@@ -87,7 +87,7 @@ export interface MiddlewareConfig {
 /**
  * Creates a route definition with optional validation and type safety
  */
-export function createRoute<T extends RouteDefinition>(config: T): any {
+export function createRoute<T extends RouteDefinition>(config: T): T {
   const processedConfig: any = {};
 
   // Process each method
@@ -149,7 +149,7 @@ export function createRoute<T extends RouteDefinition>(config: T): any {
     }
   });
 
-  return processedConfig;
+  return processedConfig as T;
 }
 
 /**

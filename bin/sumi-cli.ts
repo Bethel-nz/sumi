@@ -76,7 +76,8 @@ export default createMiddleware({
     await next();
     const duration = Date.now() - start;
     console.log(
-      \`<- \${c.req.method} \${new URL(c.req.url).pathname} (\${c.res.status}) \\\\\`\${duration}ms\\\\\`\n    );
+      \`<- \${c.req.method} \${new URL(c.req.url).pathname} (\${c.res.status}) \${duration}ms\`
+    );
   },
 });
     `;

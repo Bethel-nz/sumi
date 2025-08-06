@@ -1,6 +1,6 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "bin": {
     "sumi": "bin/sumi-cli.ts"
   },

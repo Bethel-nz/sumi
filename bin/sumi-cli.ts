@@ -112,6 +112,130 @@ await sumi.burn();
     `;
 }
 
+function generateReadmeContent(projectName: string): string {
+  return `# ${projectName}
+
+A blazing fast web API built with [Sumi](https://github.com/bethel-nz/sumi) 🔥
+
+## Getting Started
+
+### Development
+\`\`\`bash
+bun run dev
+\`\`\`
+
+### Project Structure
+\`\`\`
+├── routes/                # API routes (file-based routing)
+│   ├── index.ts          # GET /
+│   └── users/            # /users/* routes
+├── middleware/           # Global middleware
+│   └── index.ts         # Request logging
+├── src/
+│   └── server.ts        # Application entry point
+└── sumi.config.ts       # Sumi configuration
+\`\`\`
+
+### Adding Routes
+Create files in the \`routes/\` directory:
+
+\`\`\`typescript
+// routes/hello.ts
+import { createRoute } from '@bethel-nz/sumi/router';
+
+export default createRoute({
+  get: (c) => c.json({ message: 'Hello World!' })
+});
+\`\`\`
+
+### Validation with Zod
+\`\`\`typescript
+import { z } from 'zod';
+import { createRoute } from '@bethel-nz/sumi/router';
+
+const userSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email()
+});
+
+export default createRoute({
+  post: {
+    schema: { json: userSchema },
+    handler: (c) => {
+      const userData = c.valid.json;
+      return c.json({ success: true, user: userData });
+    }
+  }
+});
+\`\`\`
+
+## Deployment
+Build and deploy your Sumi app anywhere that supports Bun or Node.js.
+`;
+}
+
+function generateGitignoreContent(): string {
+  return `
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+
+# Production builds
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary folders
+tmp/
+temp/
+
+# Bun
+.bun
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Sumi specific
+.sumi/
+`.trim();
+}
+
 const globalOptions = defineOptions(
   z.object({
     help: z.boolean().optional(),
@@ -324,6 +448,19 @@ async function initProject(basePath: string) {
     console.log(
       `📄 Created server entry point: ${path.relative(basePath, serverPath)}`
     );
+  }
+
+  const readmePath = path.join(basePath, 'README.md');
+  if (!fs.existsSync(readmePath)) {
+    const projectName = path.basename(basePath);
+    fs.writeFileSync(readmePath, generateReadmeContent(projectName));
+    console.log(`📄 Created README.md`);
+  }
+
+  const gitignorePath = path.join(basePath, '.gitignore');
+  if (!fs.existsSync(gitignorePath)) {
+    fs.writeFileSync(gitignorePath, generateGitignoreContent());
+    console.log(`📄 Created .gitignore`);
   }
 }
 

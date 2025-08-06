@@ -40,7 +40,7 @@ export interface MiddlewareConfig {
 /**
  * Creates a route definition with optional validation and type safety
  */
-export declare function createRoute<T extends RouteDefinition>(config: T): any;
+export declare function createRoute<T extends RouteDefinition>(config: T): T;
 /**
  * Creates middleware with optional validation
  */

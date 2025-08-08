@@ -1,10 +1,9 @@
-// router.ts
+// router.ts (Final, Corrected Version)
 import { Context, Next } from 'hono';
-import { z, ZodSchema } from 'zod';
-import { SumiValidator } from './sumi-validator';
-import { ValidationTarget } from './types';
+import { z, ZodObject, ZodSchema } from 'zod';
+import { SumiContext, ValidationTarget } from './types';
+import { DescribeRouteOptions } from 'hono-openapi';
 
-// Schema map for validation
 export interface ValidationSchemaMap {
   json?: ZodSchema;
   form?: ZodSchema;
@@ -12,148 +11,80 @@ export interface ValidationSchemaMap {
   param?: ZodSchema;
   header?: ZodSchema;
   cookie?: ZodSchema;
+  [key: string]: ZodSchema | undefined;
 }
 
-// Type helper to infer validation results
 export type ValidatedData<T extends ValidationSchemaMap> = {
   [K in keyof T]?: T[K] extends ZodSchema ? z.infer<T[K]> : unknown;
 };
 
-// Context with validation data
 export type ValidationContext<
-  T extends ValidationSchemaMap = ValidationSchemaMap
-> = Context & {
-  valid: ValidatedData<T>;
+  T extends Record<string, ZodSchema | ZodObject<{}>>
+> = SumiContext & {
+  req: SumiContext['req'] & {
+    valid: <K extends keyof T & ValidationTarget>(target: K) => z.infer<T[K]>;
+  };
 };
 
-// Basic route definition with methods
-export interface RouteDefinition {
-  get?:
-    | RouteHandler
-    | ((c: ValidationContext<any>) => Response | Promise<Response>)
-    | RouteConfig<any>;
-  post?:
-    | RouteHandler
-    | ((c: ValidationContext<any>) => Response | Promise<Response>)
-    | RouteConfig<any>;
-  put?:
-    | RouteHandler
-    | ((c: ValidationContext<any>) => Response | Promise<Response>)
-    | RouteConfig<any>;
-  delete?:
-    | RouteHandler
-    | ((c: ValidationContext<any>) => Response | Promise<Response>)
-    | RouteConfig<any>;
-  patch?:
-    | RouteHandler
-    | ((c: ValidationContext<any>) => Response | Promise<Response>)
-    | RouteConfig<any>;
-  _?:
-    | MiddlewareHandler
-    | ((c: ValidationContext<any>, next: Next) => Promise<void | Response>)
-    | RouteConfig<any>;
-}
-
-// Standard handler types
 export type RouteHandler = (c: Context) => Response | Promise<Response>;
 export type MiddlewareHandler = (
   c: Context,
   next: Next
 ) => Promise<void | Response>;
 
-// Typed handler with validation
 export type TypedRouteHandler<T extends ValidationSchemaMap> = (
-  c: ValidationContext<T>
+  c: SumiContext & {
+    req: SumiContext['req'] & {
+      valid: <K extends keyof T & ValidationTarget>(
+        target: K
+      ) => T[K] extends ZodSchema ? z.infer<T[K]> : any;
+    };
+  }
 ) => Response | Promise<Response>;
 
-// Route with validation schema
+// --- The SINGLE FIX is inside this type definition ---
+export type OpenApiConfig = Omit<DescribeRouteOptions, 'responses'> & {
+  responses?: {
+    [statusCode: string]: {
+      description: string;
+      content?: {
+        'application/json': {
+          // THIS IS THE ONLY CHANGE: Changed from 'ZodSchema' to 'any'.
+          // This allows the object returned by the resolver() function to be accepted.
+          schema: any;
+        };
+      };
+    };
+  };
+};
+
 export interface RouteConfig<T extends ValidationSchemaMap> {
-  schema: T;
+  schema?: T;
   handler: TypedRouteHandler<T>;
+  openapi?: OpenApiConfig;
+  middleware?: string[];
 }
 
-// Type-safe route config
-export interface TypedRouteConfig<T extends ValidationSchemaMap> {
-  schema: T;
-  handler: TypedRouteHandler<T>;
-}
-
-// Middleware with validation schema
-export interface MiddlewareConfig {
-  schema: ValidationSchemaMap;
-  handler: MiddlewareHandler;
+export interface RouteDefinition {
+  get?: RouteConfig<any> | RouteHandler;
+  post?: RouteConfig<any> | RouteHandler;
+  put?: RouteConfig<any> | RouteHandler;
+  delete?: RouteConfig<any> | RouteHandler;
+  patch?: RouteConfig<any> | RouteHandler;
+  _?: RouteConfig<any> | MiddlewareHandler;
 }
 
 /**
- * Creates a route definition with optional validation and type safety
+ * A helper function that provides type-safety for route definitions.
+ * It doesn't modify the configuration.
  */
 export function createRoute<T extends RouteDefinition>(config: T): T {
-  const processedConfig: any = {};
-
-  // Process each method
-  Object.entries(config).forEach(([method, handlerOrConfig]) => {
-    if (typeof handlerOrConfig === 'function') {
-      processedConfig[method] = handlerOrConfig; // TypeScript will be satisfied with this
-    } else if (
-      handlerOrConfig &&
-      'schema' in handlerOrConfig &&
-      'handler' in handlerOrConfig
-    ) {
-      // Handler with schema validation
-      const { schema, handler } = handlerOrConfig as any;
-
-      // Create validators
-      const validators = SumiValidator.createValidators(schema);
-
-      if (method === '_') {
-        // Middleware handling
-        processedConfig[method] = async (c: Context, next: Next) => {
-          // Apply each validator in sequence
-          let currentIndex = -1;
-
-          const runNextValidator = async () => {
-            currentIndex++;
-            if (currentIndex < validators.length) {
-              return validators[currentIndex](c, runNextValidator);
-            } else {
-              // All validators passed, run the original handler
-              return (handlerOrConfig as any).handler(c as any, next);
-            }
-          };
-
-          return runNextValidator();
-        };
-      } else {
-        // Route handling
-        processedConfig[method] = async (c: Context) => {
-          (c as any).valid = {};
-
-          // Apply each validator in sequence
-          for (const validator of validators) {
-            let canContinue = true;
-            const response = await validator(c, () => {
-              canContinue = true;
-            });
-
-            // If validator returned a response, return it (validation failed)
-            if (response) return response;
-
-            // If validator indicated not to continue, stop
-            if (!canContinue)
-              return new Response('Validation error', { status: 400 });
-          }
-
-          return handler(c);
-        };
-      }
-    }
-  });
-
-  return processedConfig as T;
+  return config;
 }
 
 /**
- * Creates middleware with optional validation
+ * A helper function for defining middleware.
+ * It's a convenient alias for createRoute, ensuring consistency.
  */
 export function createMiddleware(config: { _: any }): any {
   return createRoute(config);

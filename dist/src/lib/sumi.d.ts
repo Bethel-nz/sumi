@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { SumiConfig as SumiConfigType } from './types';
+import { SumiConfig } from './types';
 export declare class Sumi {
     app: Hono;
     private default_dir;
@@ -12,20 +12,27 @@ export declare class Sumi {
     private staticConfig;
     private server;
     private config_port;
-    constructor(default_args: SumiConfigType);
+    private openapiConfig;
+    private docsConfig;
+    private hooks;
+    private validatedEnv;
+    private openApiSetup;
+    constructor(default_args: SumiConfig);
     private is_valid_file;
     private convertToHonoRoute;
     private build_routes;
-    private handleDirectory;
     private handleFile;
+    private resolveMiddleware;
     private processRouteFile;
     private applyRouteMethod;
     private clearRoutesAndMiddleware;
     private generateServerInfo;
+    private setupOpenAPIEndpoints;
     burn(port?: number): Promise<void>;
     fetch(): (request: Request, Env?: unknown, executionCtx?: import("hono").ExecutionContext) => Response | Promise<Response>;
+    private validateEnvironment;
+    shutdown(): Promise<void>;
 }
-import { SumiConfig } from './types';
 export declare function defineConfig(config: SumiConfig): SumiConfig;
-export type { SumiConfig as SumiAppConfig, StaticRouteConfig, SumiContext, } from './types';
+export type { SumiConfig as SumiAppConfig, StaticRouteConfig, SumiContext, SumiHooks, DocsConfig, } from './types';
 export type { Context as HonoContext, Next as HonoNext } from 'hono';

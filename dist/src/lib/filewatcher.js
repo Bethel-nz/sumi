@@ -22,7 +22,7 @@ export function startFileWatcher(default_dir, default_middleware_dir, func) {
             (filePath.startsWith(default_dir) ||
                 filePath.startsWith(default_middleware_dir))) {
             console.log(`[FileWatcher] Triggering reload due to event: ${event} on path: ${filePath}`);
-            func();
+            func(filePath, event);
         }
     });
     // Add an error event listener

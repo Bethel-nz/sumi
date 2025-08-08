@@ -3,11 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
 import { serveStatic } from 'hono/bun';
+// NEW OpenAPI imports
+import { generateSpecs, describeRoute } from 'hono-openapi';
+import { validator as zValidator } from 'hono-openapi/zod';
+import { Scalar } from '@scalar/hono-api-reference';
 import { RouteParser } from './RouteParser';
-import { startFileWatcher } from './filewatcher';
 import { MiddlewareHandler } from './middlewarehandler';
 import { ErrorHandler } from './errorHandler';
-import { SumiValidator } from './sumi-validator';
 export class Sumi {
     app;
     default_dir;
@@ -18,11 +20,19 @@ export class Sumi {
     processedPaths = new Set();
     uniqueRoutes = new Set();
     staticConfig = [];
-    server = null; // Store server reference for reloading
+    server = null;
     config_port;
+    openapiConfig;
+    docsConfig;
+    hooks;
+    validatedEnv = {};
+    openApiSetup = false; // Add this to track OpenAPI setup
     constructor(default_args) {
         this.app = default_args.app || new Hono();
         this.config_port = default_args.port;
+        this.openapiConfig = default_args.openapi;
+        this.docsConfig = default_args.docs || {};
+        this.hooks = default_args.hooks || {};
         if (default_args.basePath) {
             this.app_base_path = default_args.basePath;
             this.app = this.app.basePath(this.app_base_path);
@@ -31,19 +41,47 @@ export class Sumi {
         this.staticConfig = default_args.static || [];
         this.default_middleware_dir = default_args.middlewareDir
             ? path.resolve(default_args.middlewareDir)
-            : path.resolve('routes/middleware');
+            : path.resolve('middleware'); // FIX: Remove 'routes/' prefix
         this.default_dir = default_args.routesDir
             ? path.resolve(default_args.routesDir)
             : path.resolve('routes');
         this.middlewareHandler = new MiddlewareHandler(this.app, this.logger, this.default_middleware_dir, this.app_base_path);
-        this.middlewareHandler.applyGlobalMiddleware();
+        // FIX: Don't apply global middleware in constructor
+        // this.middlewareHandler.applyGlobalMiddleware();
         this.staticConfig.forEach((config) => {
             if (config.path && config.root) {
                 this.app.use(config.path, serveStatic({ root: config.root }));
             }
         });
-        // Error Handler
-        this.app.onError((err, c) => {
+        // Validate environment variables if config provided
+        if (default_args.env) {
+            this.validatedEnv = this.validateEnvironment(default_args.env);
+        }
+        // Add env middleware to make validated env available in context
+        this.app.use('*', async (c, next) => {
+            // Use c.var to store custom variables
+            c.env = this.validatedEnv;
+            await next();
+        });
+        // OpenAPI endpoints will be added after routes are built
+        // Set up global request/response hooks
+        if (this.hooks.onRequest) {
+            this.app.use('*', async (c, next) => {
+                await this.hooks.onRequest?.(c);
+                await next();
+            });
+        }
+        if (this.hooks.onResponse) {
+            this.app.use('*', async (c, next) => {
+                await next();
+                await this.hooks.onResponse?.(c);
+            });
+        }
+        // Enhanced error handler with hook
+        this.app.onError(async (err, c) => {
+            if (this.hooks.onError) {
+                await this.hooks.onError(err, c);
+            }
             ErrorHandler.handleError(err, `Request to ${c.req.path} by ${c.req.method}`);
             return c.json({ error: 'Internal Server Error', message: err.message }, 500);
         });
@@ -53,30 +91,30 @@ export class Sumi {
     }
     convertToHonoRoute(filePath) {
         const routeName = path.basename(filePath, path.extname(filePath));
-        if (routeName === 'hibana' || routeName.startsWith('_'))
+        if (routeName.startsWith('_'))
             return '';
         const isIndexFile = routeName === 'index';
         const relativePath = path.relative(this.default_dir, filePath);
         const dirPath = path.dirname(relativePath);
+        // Split path and parse segments, filtering out '.' for current directory
         const pathSegments = dirPath
             .split(path.sep)
-            .map(RouteParser.parseSegment)
-            .filter(Boolean);
-        let finalRouteNamePart = isIndexFile ? '' : routeName;
-        if (finalRouteNamePart && !finalRouteNamePart.startsWith('/')) {
-            finalRouteNamePart = `/${finalRouteNamePart}`;
-        }
-        let routePath = `/${pathSegments.join('/')}${finalRouteNamePart}`
-            .replace(/\/+/g, '/')
-            .replace(/\/$/, '');
+            .filter((segment) => segment !== '.' && segment !== '')
+            .map(RouteParser.parseSegment);
+        // For index files, don't add the filename to the route
+        // For other files, add the filename as the last segment
+        const finalRouteNamePart = isIndexFile
+            ? ''
+            : RouteParser.parseSegment(routeName);
+        // Build the route path
+        const allSegments = [...pathSegments, finalRouteNamePart].filter(Boolean);
+        let routePath = allSegments.length > 0 ? `/${allSegments.join('/')}` : '/';
+        // Special case for root index file
         if (filePath === path.join(this.default_dir, 'index.ts') ||
             filePath === path.join(this.default_dir, 'index.js')) {
             routePath = '/';
         }
-        else if (routePath === '') {
-            routePath = '/';
-        }
-        return routePath.replace(/\[(\w+)\]/g, ':$1');
+        return routePath.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
     }
     async build_routes(directory = this.default_dir) {
         const ignoredDirs = ['dist', 'static', 'public', 'node_modules'];
@@ -97,53 +135,75 @@ export class Sumi {
             fs.mkdirSync(this.default_middleware_dir, { recursive: true });
         }
         const files = fs.readdirSync(directory);
+        // First, process all directories recursively
         for (const file of files) {
             const file_path = path.join(directory, file);
             try {
                 const stat = fs.statSync(file_path);
                 if (stat.isDirectory()) {
-                    await this.handleDirectory(file_path);
+                    await this.build_routes(file_path);
                 }
-                else if (this.is_valid_file(file_path) && stat.size > 0) {
+            }
+            catch (error) {
+                // Silently skip problematic directories
+            }
+        }
+        // Then, process all files in current directory
+        for (const file of files) {
+            const file_path = path.join(directory, file);
+            try {
+                const stat = fs.statSync(file_path);
+                if (!stat.isDirectory() &&
+                    this.is_valid_file(file_path) &&
+                    stat.size > 0) {
                     await this.handleFile(file_path);
                 }
             }
             catch (error) {
-                // console.warn(`[Sumi Router] Warning processing ${file_path}: ${error.message}`);
-            }
-        }
-    }
-    async handleDirectory(dirPath) {
-        await this.build_routes(dirPath); // Await the recursive call
-        const indexExtensions = ['.ts', '.js'];
-        for (const ext of indexExtensions) {
-            const indexPath = path.join(dirPath, `index${ext}`);
-            if (fs.existsSync(indexPath) && this.is_valid_file(indexPath)) {
-                // Check if file has content before processing
-                const stat = fs.statSync(indexPath);
-                if (stat.size > 0) {
-                    await this.processRouteFile(indexPath);
-                }
-                break;
+                // Silently skip problematic files
             }
         }
     }
     async handleFile(filePath) {
         const baseName = path.basename(filePath);
-        // Middleware files (e.g., _index.ts, _middleware.ts) are not routes
-        // and are handled by the MiddlewareHandler.
+        // Skip middleware files
         if (baseName.startsWith('_')) {
             return;
         }
-        // Index files within subdirectories (e.g., routes/api/index.ts)
-        // are handled by the handleDirectory method for that subdirectory.
-        // The root index file (e.g., routes/index.ts) should be processed by this method.
-        const isIndexInSubdirectory = baseName.startsWith('index.') &&
-            path.dirname(filePath) !== this.default_dir;
-        if (isIndexInSubdirectory) {
-            return;
-        }
         await this.processRouteFile(filePath);
+    }
+    async resolveMiddleware(middlewareName) {
+        // Look for middleware in the middleware directory
+        const middlewarePath = path.join(this.default_middleware_dir, `${middlewareName}.ts`);
+        const jsMiddlewarePath = path.join(this.default_middleware_dir, `${middlewareName}.js`);
+        let finalPath = middlewarePath;
+        if (!fs.existsSync(middlewarePath) && fs.existsSync(jsMiddlewarePath)) {
+            finalPath = jsMiddlewarePath;
+        }
+        if (!fs.existsSync(finalPath)) {
+            console.warn(`[Sumi Router] Middleware "${middlewareName}" not found at ${finalPath}`);
+            return null;
+        }
+        try {
+            const middlewareModule = await import(`${finalPath}?v=${Date.now()}`);
+            if (middlewareModule.default &&
+                typeof middlewareModule.default === 'function') {
+                return middlewareModule.default;
+            }
+            else if (middlewareModule.default &&
+                typeof middlewareModule.default._ === 'function') {
+                // Handle createMiddleware format
+                return middlewareModule.default._;
+            }
+            else {
+                console.warn(`[Sumi Router] Invalid middleware structure in ${middlewareName}. Expected function or { _: function }.`);
+                return null;
+            }
+        }
+        catch (error) {
+            console.error(`[Sumi Router] Error loading middleware "${middlewareName}":`, error);
+            return null;
+        }
     }
     async processRouteFile(filePath) {
         let routeModule;
@@ -162,59 +222,69 @@ export class Sumi {
         const routeDefinition = routeModule.default;
         const route_path = this.convertToHonoRoute(filePath);
         if (!route_path)
-            return; // Skips if convertToHonoRoute decided it (e.g. for _ files if they ever got here)
+            return;
+        // Apply directory-based middleware only once per directory
         const currentFileDir = path.dirname(filePath);
         if (!this.processedPaths.has(currentFileDir)) {
-            this.middlewareHandler.applyMiddleware(currentFileDir, route_path);
+            await this.middlewareHandler.applyMiddleware(currentFileDir, route_path);
             this.processedPaths.add(currentFileDir);
         }
-        Object.keys(routeDefinition).forEach((method) => {
-            const methodKey = method;
-            const methodDefinition = routeDefinition[methodKey];
-            let userHandler;
-            let validationSchemas;
-            if (!methodDefinition)
-                return;
-            if (typeof methodDefinition === 'function') {
-                userHandler = methodDefinition;
-                validationSchemas = undefined;
-            }
-            else if (typeof methodDefinition === 'object' &&
-                methodDefinition.handler &&
-                typeof methodDefinition.handler === 'function') {
-                // This now uses RouteConfig instead of ProcessedRouteMethodConfig
-                const processedConfig = methodDefinition;
-                userHandler = processedConfig.handler;
-                validationSchemas = processedConfig.schema;
-            }
-            else {
-                if (method !== '_') {
-                    console.warn(`[Sumi Router] Invalid route structure for method "${String(method)}" in ${relativeFilePath}. Ensure it's a function or an object with a handler.`);
-                }
-                return;
-            }
+        for (const [method, methodConfig] of Object.entries(routeDefinition)) {
+            if (!methodConfig)
+                continue;
             const routeKey = `${method.toUpperCase()}:${route_path}`;
-            if (this.uniqueRoutes.has(routeKey) && method !== '_') {
-                return;
+            // Prevent duplicate route registration
+            if (this.uniqueRoutes.has(routeKey)) {
+                console.warn(`[Sumi Router] Duplicate route detected: ${routeKey}, skipping...`);
+                continue;
             }
             this.uniqueRoutes.add(routeKey);
-            const middlewaresToApply = [];
-            if (validationSchemas) {
-                const validators = SumiValidator.createValidators(validationSchemas);
-                if (validators.length > 0)
-                    middlewaresToApply.push(...validators);
+            const middlewareChain = [];
+            let userHandler;
+            if (typeof methodConfig === 'function') {
+                userHandler = methodConfig;
             }
-            try {
-                // Pass the original method string here
-                this.applyRouteMethod(method, route_path, ...middlewaresToApply, userHandler);
+            else if (typeof methodConfig === 'object' && methodConfig.handler) {
+                userHandler = methodConfig.handler;
+                // Add OpenAPI Description Middleware
+                if (methodConfig.openapi) {
+                    middlewareChain.push(describeRoute(methodConfig.openapi));
+                }
+                // Add Route-Specific Middleware
+                if (methodConfig.middleware && Array.isArray(methodConfig.middleware)) {
+                    for (const middlewareName of methodConfig.middleware) {
+                        const middleware = await this.resolveMiddleware(middlewareName);
+                        if (middleware) {
+                            middlewareChain.push(middleware);
+                        }
+                    }
+                }
+                // Add validation middleware
+                if (methodConfig.schema) {
+                    for (const [target, schema] of Object.entries(methodConfig.schema)) {
+                        if (schema && typeof schema === 'object' && '_def' in schema) {
+                            middlewareChain.push(zValidator(target, schema));
+                        }
+                    }
+                }
             }
-            catch (error) {
-                console.error(`[Sumi Router] Error applying ${method.toUpperCase()} for ${route_path} from ${relativeFilePath}:`, error);
+            else {
+                continue; // Invalid config for this method
             }
-        });
+            // Add the User's Handler at the end of the chain
+            middlewareChain.push(userHandler);
+            // Apply the entire chain to the Hono app
+            this.applyRouteMethod(method, route_path, ...middlewareChain);
+            // Call route registered hook for each method
+            if (method !== '_' && this.hooks.onRouteRegistered) {
+                this.hooks.onRouteRegistered(method, route_path);
+            }
+        }
     }
     applyRouteMethod(method, routePath, ...handlers) {
         const honoMethod = method.toLowerCase();
+        // Remove debug logging
+        // console.log(`[DEBUG] Registering ${method.toUpperCase()} ${routePath}`);
         if (typeof this.app[honoMethod] === 'function') {
             this.app[honoMethod](routePath, ...handlers);
         }
@@ -236,61 +306,143 @@ export class Sumi {
         }
         // Reset middleware handler with the new app instance
         this.middlewareHandler.reset(this.app);
+        // Re-apply static routes
         this.staticConfig.forEach((config) => {
             if (config.path && config.root) {
                 this.app.use(config.path, serveStatic({ root: config.root }));
             }
         });
+        // Re-apply environment middleware
+        this.app.use('*', async (c, next) => {
+            c.env = this.validatedEnv;
+            await next();
+        });
+        // Re-apply hooks
+        if (this.hooks.onRequest) {
+            this.app.use('*', async (c, next) => {
+                await this.hooks.onRequest?.(c);
+                await next();
+            });
+        }
+        if (this.hooks.onResponse) {
+            this.app.use('*', async (c, next) => {
+                await next();
+                await this.hooks.onResponse?.(c);
+            });
+        }
         // Re-apply error handler to the new app instance
-        this.app.onError((err, c) => {
+        this.app.onError(async (err, c) => {
+            if (this.hooks.onError) {
+                await this.hooks.onError(err, c);
+            }
             ErrorHandler.handleError(err, `Request to ${c.req.path} by ${c.req.method}`);
             return c.json({ error: 'Internal Server Error', message: err.message }, 500);
         });
+        // Clear tracking sets
         this.processedPaths.clear();
         this.uniqueRoutes.clear();
+        this.openApiSetup = false; // Reset OpenAPI setup flag
     }
     generateServerInfo() {
-        return `
-🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered\n
+        const baseUrl = `http://localhost:${this.config_port}${this.app_base_path || ''}`;
+        let info = `
+🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered
+
 Server running on port ${this.config_port}
-usage: curl -X GET http://localhost:${this.config_port}${this.app_base_path === undefined ? '' : this.app_base_path}
-    `;
+usage: curl -X GET ${baseUrl}`;
+        // Add documentation endpoints if available
+        if (this.openapiConfig || this.docsConfig) {
+            info += `\n\n📚 Documentation:`;
+            // Add docs endpoint
+            const docsPath = this.docsConfig?.path || '/docs';
+            info += `\n  • API Docs: ${baseUrl}${docsPath}`;
+            // Add OpenAPI JSON endpoint
+            info += `\n  • OpenAPI Spec: ${baseUrl}/openapi.json`;
+        }
+        return info + '\n';
+    }
+    setupOpenAPIEndpoints() {
+        // Prevent double setup
+        if (this.openApiSetup) {
+            return;
+        }
+        if (!this.openapiConfig && !this.docsConfig)
+            return;
+        const docOptions = {
+            documentation: this.openapiConfig || {
+                info: {
+                    title: 'Sumi API',
+                    version: '1.0.0',
+                    description: 'API built with Sumi 🔥',
+                },
+                openapi: '3.1.0',
+            },
+        };
+        // Register OpenAPI JSON endpoint
+        this.app.get('/openapi.json', async (c) => {
+            try {
+                const spec = await generateSpecs(this.app, docOptions);
+                return c.json(spec);
+            }
+            catch (error) {
+                console.error('Error generating OpenAPI specs:', error);
+                return c.json({ error: 'Failed to generate OpenAPI specs' }, 500);
+            }
+        });
+        // Register Scalar documentation endpoint
+        const docsPath = this.docsConfig?.path || '/docs';
+        const theme = this.docsConfig?.theme || 'purple';
+        const pageTitle = this.docsConfig?.pageTitle || 'Sumi API Documentation';
+        this.app.get(docsPath, Scalar({
+            url: this.app_base_path
+                ? `${this.app_base_path}/openapi.json`
+                : '/openapi.json',
+            theme,
+            pageTitle,
+        }));
+        this.openApiSetup = true; // Mark as setup
     }
     async burn(port) {
         try {
             // Use provided port or fall back to config port
             const serverPort = port || this.config_port;
             if (process.env.NODE_ENV !== 'test') {
-                console.clear();
+                // Only clear console on first run, not on hot reloads
+                if (!global.__SUMI_STARTED) {
+                    console.clear();
+                    global.__SUMI_STARTED = true;
+                }
+                // Clear and rebuild routes
+                this.clearRoutesAndMiddleware();
+                await this.middlewareHandler.applyGlobalMiddleware(); // Apply global middleware once here
                 await this.build_routes();
-                // Setup hot reload watcher
-                startFileWatcher(this.default_middleware_dir, this.default_dir, async () => {
-                    // Kill current server if it exists
-                    if (this.server) {
-                        try {
-                            this.server.stop();
-                            this.server = null;
-                        }
-                        catch (err) {
-                            console.error('[Sumi Reloader] Error stopping server:', err);
-                        }
-                    }
-                    console.log(this.generateServerInfo());
-                });
+                this.setupOpenAPIEndpoints();
+                // Call onReady hook before starting server
+                if (this.hooks.onReady) {
+                    await this.hooks.onReady();
+                }
+                // Stop existing server before starting new one
+                if (this.server) {
+                    this.server.stop(true);
+                    this.server = null;
+                }
                 // Start server if port is provided
                 if (serverPort) {
                     this.server = Bun.serve({
                         port: serverPort,
                         fetch: this.fetch(),
+                        development: true,
                     });
                 }
             }
             else {
                 // For test environment, just build routes without starting a server
                 this.clearRoutesAndMiddleware();
-                this.middlewareHandler.applyGlobalMiddleware();
+                await this.middlewareHandler.applyGlobalMiddleware(); // Apply global middleware once here
                 await this.build_routes();
+                this.setupOpenAPIEndpoints();
             }
+            // Log server info
             console.log(this.generateServerInfo());
         }
         catch (error) {
@@ -304,6 +456,54 @@ usage: curl -X GET http://localhost:${this.config_port}${this.app_base_path === 
             return async (_req) => new Response('Sumi app not initialized', { status: 500 });
         }
         return this.app.fetch.bind(this.app);
+    }
+    validateEnvironment(envConfig) {
+        const { schema, required = [] } = envConfig;
+        const result = {};
+        const errors = [];
+        for (const [key, zodSchema] of Object.entries(schema)) {
+            const envValue = process.env[key];
+            if (required.includes(key) &&
+                process.env.NODE_ENV === 'production' &&
+                !envValue) {
+                errors.push(`Environment variable ${key} is required in production`);
+                continue;
+            }
+            try {
+                result[key] = zodSchema.parse(envValue);
+            }
+            catch (error) {
+                if (envValue !== undefined) {
+                    const errorMessage = error instanceof Error ? error.message : String(error);
+                    errors.push(`Invalid environment variable ${key}: ${errorMessage}`);
+                }
+                else if (required.includes(key)) {
+                    errors.push(`Missing required environment variable: ${key}`);
+                }
+                try {
+                    result[key] = zodSchema.parse(undefined);
+                }
+                catch {
+                    // No default available
+                }
+            }
+        }
+        if (errors.length > 0) {
+            console.error('🚨 Environment validation errors:');
+            errors.forEach((error) => console.error(`  - ${error}`));
+            if (process.env.NODE_ENV === 'production') {
+                process.exit(1);
+            }
+        }
+        return result;
+    }
+    async shutdown() {
+        if (this.hooks.onShutdown) {
+            await this.hooks.onShutdown();
+        }
+        if (this.server) {
+            this.server.stop();
+        }
     }
 }
 export function defineConfig(config) {

@@ -1,5 +1,5 @@
-// src/types/sumi-js.d.ts
-declare module 'sumi-js' {
+// src/types/sumi.d.ts
+declare module 'sumi' {
   import { Hono } from 'hono';
   import { Context, Next } from 'hono';
 
@@ -46,6 +46,6 @@ declare module 'hono' {
     plugin: {
       set<T>(key: string, value: T): void;
       use<T>(key: string): T;
-    }
+    };
   }
 }

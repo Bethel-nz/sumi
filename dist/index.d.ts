@@ -1,3 +1,5 @@
 export { Sumi, defineConfig } from './src/lib/sumi';
+export type { SumiAppConfig, StaticRouteConfig, SumiContext, } from './src/lib/sumi';
+export * from './src/lib/router';
 export { hibana } from './src/hibana';
-export type { SumiConfig, StaticRouteConfig, SumiContext, } from './src/lib/types';
+export { createTestApp, createMockApp } from './src/lib/testing';

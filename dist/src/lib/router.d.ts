@@ -1,5 +1,7 @@
 import { Context, Next } from 'hono';
-import { z, ZodSchema } from 'zod';
+import { z, ZodObject, ZodSchema } from 'zod';
+import { SumiContext, ValidationTarget } from './types';
+import { DescribeRouteOptions } from 'hono-openapi';
 export interface ValidationSchemaMap {
     json?: ZodSchema;
     form?: ZodSchema;
@@ -7,42 +9,57 @@ export interface ValidationSchemaMap {
     param?: ZodSchema;
     header?: ZodSchema;
     cookie?: ZodSchema;
+    [key: string]: ZodSchema | undefined;
 }
 export type ValidatedData<T extends ValidationSchemaMap> = {
     [K in keyof T]?: T[K] extends ZodSchema ? z.infer<T[K]> : unknown;
 };
-export type ValidationContext<T extends ValidationSchemaMap = ValidationSchemaMap> = Context & {
-    valid: ValidatedData<T>;
+export type ValidationContext<T extends Record<string, ZodSchema | ZodObject<{}>>> = SumiContext & {
+    req: SumiContext['req'] & {
+        valid: <K extends keyof T & ValidationTarget>(target: K) => z.infer<T[K]>;
+    };
 };
-export interface RouteDefinition {
-    get?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
-    post?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
-    put?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
-    delete?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
-    patch?: RouteHandler | ((c: ValidationContext<any>) => Response | Promise<Response>) | RouteConfig<any>;
-    _?: MiddlewareHandler | ((c: ValidationContext<any>, next: Next) => Promise<void | Response>) | RouteConfig<any>;
-}
 export type RouteHandler = (c: Context) => Response | Promise<Response>;
 export type MiddlewareHandler = (c: Context, next: Next) => Promise<void | Response>;
-export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: ValidationContext<T>) => Response | Promise<Response>;
+export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: SumiContext & {
+    req: SumiContext['req'] & {
+        valid: <K extends keyof T & ValidationTarget>(target: K) => T[K] extends ZodSchema ? z.infer<T[K]> : any;
+    };
+}) => Response | Promise<Response>;
+export type OpenApiConfig = Omit<DescribeRouteOptions, 'responses'> & {
+    responses?: {
+        [statusCode: string]: {
+            description: string;
+            content?: {
+                'application/json': {
+                    schema: any;
+                };
+            };
+        };
+    };
+};
 export interface RouteConfig<T extends ValidationSchemaMap> {
-    schema: T;
+    schema?: T;
     handler: TypedRouteHandler<T>;
+    openapi?: OpenApiConfig;
+    middleware?: string[];
 }
-export interface TypedRouteConfig<T extends ValidationSchemaMap> {
-    schema: T;
-    handler: TypedRouteHandler<T>;
-}
-export interface MiddlewareConfig {
-    schema: ValidationSchemaMap;
-    handler: MiddlewareHandler;
+export interface RouteDefinition {
+    get?: RouteConfig<any> | RouteHandler;
+    post?: RouteConfig<any> | RouteHandler;
+    put?: RouteConfig<any> | RouteHandler;
+    delete?: RouteConfig<any> | RouteHandler;
+    patch?: RouteConfig<any> | RouteHandler;
+    _?: RouteConfig<any> | MiddlewareHandler;
 }
 /**
- * Creates a route definition with optional validation and type safety
+ * A helper function that provides type-safety for route definitions.
+ * It doesn't modify the configuration.
  */
 export declare function createRoute<T extends RouteDefinition>(config: T): T;
 /**
- * Creates middleware with optional validation
+ * A helper function for defining middleware.
+ * It's a convenient alias for createRoute, ensuring consistency.
  */
 export declare function createMiddleware(config: {
     _: any;

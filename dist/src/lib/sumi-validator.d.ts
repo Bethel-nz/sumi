@@ -17,8 +17,8 @@ export declare class SumiValidator {
         success: false;
         message: string;
         errors: {
-            path: string;
-            message: string;
+            path: any;
+            message: any;
         }[];
     }, 400, "json">) | (Response & import("hono").TypedResponse<{
         success: false;

@@ -5,7 +5,7 @@ import path from 'path';
 export function startFileWatcher(
   default_dir: string,
   default_middleware_dir: string,
-  func: () => void
+  func: (filePath: string, eventType: 'add' | 'change' | 'unlink') => void
 ): FSWatcher {
   const watchOptions = {
     ignored: [
@@ -37,7 +37,7 @@ export function startFileWatcher(
       console.log(
         `[FileWatcher] Triggering reload due to event: ${event} on path: ${filePath}`
       );
-      func();
+      func(filePath, event as 'add' | 'change' | 'unlink');
     }
   });
 

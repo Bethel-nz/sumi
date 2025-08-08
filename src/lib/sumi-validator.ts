@@ -88,7 +88,7 @@ export class SumiValidator {
 
         if (!result.success) {
           // Return detailed validation errors
-          const formattedErrors = result.error.errors.map((err) => ({
+          const formattedErrors = result.error.issues.map((err: any) => ({
             path: err.path.join('.'),
             message: err.message,
           }));

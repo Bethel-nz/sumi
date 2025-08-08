@@ -1,6 +1,18 @@
 # Sumi 🔥
 
-A blazing fast web framework built on [Hono](https://hono.dev) with file-based routing, automatic OpenAPI documentation, and powerful CLI tooling.
+Sumi is a blazing fast web framework built on top of [Hono](https://hono.dev), adding Next.js-style file-based routing, automatic OpenAPI docs, and a powerful CLI — all optimized for the Bun runtime.
+
+If you love Hono's speed and simplicity, but want:
+
+✅ Route-by-file conventions
+
+✅ Built-in Zod validation
+
+✅ Auto-generated OpenAPI + docs UI
+
+✅ Hot reload + DX-focused tooling
+
+...then Sumi is the framework layer you didn't know you needed.
 
 ## ✨ Features
 
@@ -180,8 +192,8 @@ export default createMiddleware({
       return c.json({ error: 'Unauthorized' }, 401);
     }
 
-    // Add user info to context
-    (c as any).user = { id: '123', role: 'admin' };
+    // Add user info to context using c.set
+    c.set('user', { id: '123', role: 'admin' });
     await next();
   },
 });
@@ -207,12 +219,12 @@ export default createMiddleware({
 
     console.log(`📊 [Request Tracker] ${endpointId} | Request #${newCount}`);
 
-    // Add tracking info to context
-    (c as any).requestTrack = {
+    // Add tracking info to context using c.set
+    c.set('requestTrack', {
       endpointId,
       requestCount: newCount,
       timestamp: new Date().toISOString(),
-    };
+    });
 
     await next();
   },
@@ -236,8 +248,8 @@ export default createRoute({
     },
     handler: (c) => {
       // Access middleware-injected data
-      const user = (c as any).user;
-      const trackInfo = (c as any).requestTrack;
+      const user = c.get('user');
+      const trackInfo = c.get('requestTrack');
 
       return c.json({
         message: `Admin data for ${user.id}`,
@@ -273,7 +285,7 @@ export default createRoute({
   get: {
     middleware: ['request_track'], // Only track this endpoint
     handler: (c) => {
-      const trackInfo = (c as any).requestTrack;
+      const trackInfo = c.get('requestTrack');
 
       return c.json({
         message: 'Public stats endpoint',

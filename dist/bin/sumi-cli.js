@@ -4,7 +4,7 @@ import prompts from 'prompts';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { Sumi } from '../src/lib/sumi';
+import { Sumi } from '../lib/sumi';
 const cli = cac('sumi');
 function createDirectory(dirPath) {
     if (!fs.existsSync(dirPath)) {

@@ -3,7 +3,8 @@
     "target": "ESNext",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "outDir": "./dist",
+    "rootDir": "src",
+    "outDir": "dist",
     "strict": true,
     "skipLibCheck": true,
     "types": ["node", "bun"],
@@ -13,6 +14,6 @@
     "declarationDir": "./dist",
     "typeRoots": ["src/types", "./node_modules/@types"]
   },
-  "include": ["src/**/*", "index.ts", "bin/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "example/**/*"]
 }

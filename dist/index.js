@@ -1,4 +1,4 @@
-export { Sumi, defineConfig } from './src/lib/sumi';
-export * from './src/lib/router';
-export { hibana } from './src/hibana';
-export { createTestApp, createMockApp } from './src/lib/testing';
+export { Sumi, defineConfig } from './lib/sumi';
+export * from './lib/router';
+export { hibana } from './hibana';
+export { createTestApp, createMockApp } from './lib/testing';

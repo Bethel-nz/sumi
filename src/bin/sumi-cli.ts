@@ -6,8 +6,8 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-import { Sumi } from '../src/lib/sumi';
-import type { SumiConfig } from '../src/lib/types';
+import { Sumi } from '../lib/sumi';
+import type { SumiConfig } from '../lib/types';
 const cli = cac('sumi');
 
 function createDirectory(dirPath: string) {

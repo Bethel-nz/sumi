@@ -12,6 +12,122 @@ function createDirectory(dirPath) {
         fs.mkdirSync(dirPath, { recursive: true });
     }
 }
+function isDirEmpty(dir) {
+    try {
+        return fs.readdirSync(dir).length === 0;
+    }
+    catch {
+        return true;
+    }
+}
+// Ensures there is package.json and creates if it does not exist
+function ensurePackageJson(projectPath) {
+    const pkgPath = path.join(projectPath, 'package.json');
+    const baseDeps = {
+        '@bethel-nz/sumi': '^1.0.0',
+        'hono': '^4.8.0',
+        'zod': '^4.0.0',
+        '@hono/zod-validator': '^0.7.0',
+        'hono-openapi': '^0.4.8',
+        '@scalar/hono-api-reference': '^0.9.13',
+        'zod-openapi': '^5.3.0',
+    };
+    if (!fs.existsSync(pkgPath)) {
+        const pkg = {
+            name: path.basename(projectPath) || 'sumi-app',
+            version: '0.1.0',
+            private: true,
+            scripts: {
+                dev: 'sumi dev',
+                start: 'sumi start',
+                build: 'sumi build',
+            },
+            dependencies: baseDeps,
+            devDependencies: {},
+        };
+        fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+        console.log('Created package.json');
+        return;
+    }
+    // augment existing package.json (scripts + deps), but don’t overwrite user versions if present
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+    pkg.scripts ||= {};
+    pkg.scripts.dev ||= 'sumi dev';
+    pkg.scripts.start ||= 'sumi start';
+    pkg.scripts.build ||= 'sumi build';
+    pkg.dependencies ||= {};
+    for (const [k, v] of Object.entries(baseDeps)) {
+        if (!pkg.dependencies[k])
+            pkg.dependencies[k] = v;
+    }
+    fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
+    console.log('🛠️  Updated package.json (scripts/dependencies)');
+}
+// This function installs the dependencies sumi uses by default
+function installAppDeps(projectPath) {
+    console.log(`[sumi] Installing dependencies in: ${projectPath}`);
+    const desiredSpecs = [
+        '@bethel-nz/sumi',
+        'hono',
+        'zod@^4.0.0',
+        '@hono/zod-validator',
+        'hono-openapi',
+        '@scalar/hono-api-reference',
+        'zod-openapi',
+    ];
+    console.log(`[sumi] Running: bun add ${desiredSpecs.join(" ")}`);
+    const getPkgName = (spec) => {
+        if (spec.startsWith('file:') || spec.startsWith('link:'))
+            return spec;
+        if (spec.startsWith('@')) {
+            const lastAt = spec.lastIndexOf('@');
+            return lastAt > 0 ? spec.slice(0, lastAt) : spec;
+        }
+        const firstAt = spec.indexOf('@');
+        return firstAt > 0 ? spec.slice(0, firstAt) : spec;
+    };
+    const pkgPath = path.join(projectPath, 'package.json');
+    const pkg = fs.existsSync(pkgPath)
+        ? JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
+        : { dependencies: {}, devDependencies: {} };
+    const existing = new Set([
+        ...Object.keys(pkg.dependencies || {}),
+        ...Object.keys(pkg.devDependencies || {})
+    ]);
+    const sumiSpec = (pkg.dependencies && pkg.dependencies['@bethel-nz/sumi']) || '';
+    const isSumiLinked = typeof sumiSpec === 'string' && (sumiSpec.startsWith('link:') || sumiSpec.startsWith('file:'));
+    let missing = desiredSpecs.filter((spec) => !existing.has(getPkgName(spec)));
+    if (isSumiLinked) {
+        missing = missing.filter((spec) => getPkgName(spec) !== '@bethel-nz/sumi');
+    }
+    const nodeModulesPath = path.join(projectPath, 'node_modules');
+    const bunLockPath = path.join(projectPath, 'bun.lockb');
+    const needsBootstrapInstall = !fs.existsSync(nodeModulesPath) || !fs.existsSync(bunLockPath);
+    if (missing.length === 0) {
+        if (needsBootstrapInstall) {
+            console.log('Installing dependencies (bootstrap)…');
+            try {
+                execSync(`bun install`, { cwd: projectPath, stdio: 'inherit' });
+            }
+            catch {
+                console.log('bun install failed; falling back to npm install..');
+                execSync(`npm install`, { cwd: projectPath, stdio: 'inherit' });
+            }
+        }
+        else {
+            console.log('Dependencies already satisfied (nothing to install).');
+        }
+        return;
+    }
+    console.log('Installing app dependencies...');
+    try {
+        execSync(`bun add ${missing.join(' ')}`, { cwd: projectPath, stdio: 'inherit' });
+    }
+    catch {
+        console.log('bun add failed; falling back to npm install..');
+        execSync(`npm install ${missing.join(' ')}`, { cwd: projectPath, stdio: 'inherit' });
+    }
+}
 function generateIndexRouteContent() {
     return `
 import { z } from 'zod';
@@ -345,7 +461,15 @@ function generatePackageJsonContent(projectName) {
             build: 'sumi build',
             start: 'sumi start',
         },
-        dependencies: {},
+        dependencies: {
+            '@bethel-nz/sumi': '^1.0.0',
+            hono: '^4.8.0',
+            zod: '^4.0.0',
+            '@hono/zod-validator': '^0.7.0',
+            'hono-openapi': '^0.4.8',
+            '@scalar/hono-api-reference': '^0.9.13',
+            'zod-openapi': '^5.3.0'
+        },
         devDependencies: {},
     }, null, 2);
 }
@@ -587,45 +711,94 @@ export default defineConfig({
 `.trim();
 }
 // Commands
+// cli
+//   .command('new <projectName>', 'Create a new Sumi project')
+//   .action(async (projectName: string) => {
+//     console.log(`✨ Creating new Sumi project: ${projectName}`);
+//     const projectPath = path.resolve(process.cwd(), projectName);
+//     if (fs.existsSync(projectPath)) {
+//       console.error(`❌ Directory already exists: ${projectPath}`);
+//       process.exit(1);
+//     }
+//     createDirectory(projectPath);
+//     // Create package.json
+//     const packageJsonPath = path.join(projectPath, 'package.json');
+//     fs.writeFileSync(packageJsonPath, generatePackageJsonContent(projectName));
+//     console.log(`📄 Created package.json`);
+//     // Install dependencies
+//     console.log(`📦 Installing dependencies...`);
+//     try {
+//       execSync(
+//         'bun add @bethel-nz/sumi hono zod@^4.0.0 @scalar/hono-api-reference hono-openapi zod-openapi cac',
+//         {
+//           cwd: projectPath,
+//           stdio: 'inherit',
+//         }
+//       );
+//     } catch (error) {
+//       console.error('❌ Failed to install dependencies.', error);
+//       process.exit(1);
+//     }
+//     // Initialize project
+//     console.log(`⚙️ Initializing project configuration...`);
+//     await initProject(projectPath);
+//     console.log(`\n✅ Project '${projectName}' created successfully!`);
+//     console.log(`\nTo get started:`);
+//     console.log(`  cd ${projectName}`);
+//     console.log(`  bun run dev`);
+//   });
 cli
     .command('new <projectName>', 'Create a new Sumi project')
     .action(async (projectName) => {
-    console.log(`✨ Creating new Sumi project: ${projectName}`);
-    const projectPath = path.resolve(process.cwd(), projectName);
-    if (fs.existsSync(projectPath)) {
-        console.error(`❌ Directory already exists: ${projectPath}`);
-        process.exit(1);
-    }
-    createDirectory(projectPath);
-    // Create package.json
-    const packageJsonPath = path.join(projectPath, 'package.json');
-    fs.writeFileSync(packageJsonPath, generatePackageJsonContent(projectName));
-    console.log(`📄 Created package.json`);
-    // Install dependencies
-    console.log(`📦 Installing dependencies...`);
-    try {
-        execSync('bun add @bethel-nz/sumi hono zod@^4.0.0 @scalar/hono-api-reference hono-openapi zod-openapi cac', {
-            cwd: projectPath,
-            stdio: 'inherit',
+    console.log(`Creating new Sumi project: ${projectName}`);
+    const isDot = projectName === '.' || projectName === './';
+    const projectPath = isDot
+        ? process.cwd()
+        : path.resolve(process.cwd(), projectName);
+    if (fs.existsSync(projectPath) && !isDirEmpty(projectPath)) {
+        const { cont } = await prompts({
+            type: 'confirm',
+            name: 'cont',
+            message: `Directory already exists: ${projectPath}. Continue and only create missing files?`,
+            initial: false
         });
+        if (!cont) {
+            console.log('Aborted.');
+            process.exit(0);
+        }
     }
-    catch (error) {
-        console.error('❌ Failed to install dependencies.', error);
-        process.exit(1);
+    if (!fs.existsSync(projectPath)) {
+        createDirectory(projectPath);
+        const packageJsonPath = path.join(projectPath, 'package.json');
+        fs.writeFileSync(packageJsonPath, generatePackageJsonContent(path.basename(projectPath)));
+        console.log('Created package.json');
     }
-    // Initialize project
-    console.log(`⚙️ Initializing project configuration...`);
+    else {
+        // Dir exists (dot or not): ensure scripts/deps are present without overwriting user versions
+        ensurePackageJson(projectPath);
+    }
+    installAppDeps(projectPath);
+    // Initialize project files (config/routes/middleware/etc.)
+    console.log(`Initializing project configuration...`);
     await initProject(projectPath);
-    console.log(`\n✅ Project '${projectName}' created successfully!`);
-    console.log(`\nTo get started:`);
-    console.log(`  cd ${projectName}`);
-    console.log(`  bun run dev`);
+    console.log(`\nProject ${isDot ? 'bootstrapped' : `'${projectName}' created`} successfully!`);
+    if (!isDot) {
+        console.log(`\nTo get started:\n  cd ${projectName}\n  sumi dev`);
+    }
+    else {
+        console.log(`\nRun:\n  sumi dev`);
+    }
 });
 cli
     .command('init', 'Initialize Sumi configuration in the current directory')
-    .action(async () => {
-    await initProject(process.cwd());
+    .option('--yes, -y', 'Skip prompts and use defaults', { default: false })
+    .action(async (options) => {
+    const cwd = process.cwd();
+    ensurePackageJson(cwd);
+    installAppDeps(cwd);
+    await initProject(cwd, options?.yes === true);
     console.log(`\n✅ Project initialized successfully!`);
+    console.log(`\nNext:\n sumi dev`);
 });
 cli
     .command('dev', 'Start the Sumi development server with hot reload')
@@ -785,9 +958,9 @@ cli
     }
 });
 // Helper functions
-async function initProject(basePath) {
+async function initProject(basePath, force = false) {
     const configPath = path.join(basePath, 'sumi.config.ts');
-    if (fs.existsSync(configPath)) {
+    if (fs.existsSync(configPath) && !force) {
         const { overwrite } = await prompts({
             type: 'confirm',
             name: 'overwrite',
@@ -799,60 +972,71 @@ async function initProject(basePath) {
             process.exit(0);
         }
     }
-    const responses = await prompts([
+    const defaults = {
+        routesDir: 'routes',
+        middlewareDir: 'middleware',
+        logger: true,
+        port: 3000,
+        basePath: '/',
+        addStatic: false,
+        staticPath: '/public/*',
+        staticRoot: './public',
+        enableOpenAPI: true,
+    };
+    const responses = force ? defaults : await prompts([
         {
             type: 'text',
             name: 'routesDir',
             message: 'Routes directory?',
-            initial: 'routes',
+            initial: defaults.routesDir,
         },
         {
             type: 'text',
             name: 'middlewareDir',
             message: 'Middleware directory?',
-            initial: 'middleware',
+            initial: defaults.middlewareDir,
         },
         {
             type: 'confirm',
             name: 'logger',
             message: 'Enable request logger?',
-            initial: true,
+            initial: defaults.logger,
         },
         {
             type: 'number',
             name: 'port',
             message: 'Development server port?',
-            initial: 3000,
+            initial: defaults.port,
         },
         {
             type: 'text',
             name: 'basePath',
             message: 'API base path? (e.g., /api/v1 or leave empty for /)',
-            initial: '/',
+            initial: defaults.basePath,
         },
         {
             type: 'confirm',
             name: 'addStatic',
             message: 'Configure a static file directory?',
-            initial: false,
+            initial: defaults.addStatic,
         },
         {
             type: (prev) => (prev ? 'text' : null),
             name: 'staticPath',
             message: 'URL path for static files (e.g., /public/*)?',
-            initial: '/public/*',
+            initial: defaults.staticPath,
         },
         {
             type: (prev, values) => (values.addStatic ? 'text' : null),
             name: 'staticRoot',
             message: 'Filesystem directory for static files (e.g., ./public)?',
-            initial: './public',
+            initial: defaults.staticRoot,
         },
         {
             type: 'confirm',
             name: 'enableOpenAPI',
             message: 'Enable OpenAPI documentation?',
-            initial: true,
+            initial: defaults.enableOpenAPI,
         },
     ]);
     // Create project structure

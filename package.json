@@ -1,6 +1,6 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A blazing fast web framework built on Hono with file-based routing, OpenAPI support, and CLI tooling",
   "bin": {
     "sumi": "dist/bin/sumi-cli.js"

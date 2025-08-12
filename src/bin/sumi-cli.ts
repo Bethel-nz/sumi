@@ -135,8 +135,8 @@ function installAppDeps(projectPath: string){
       try {
         execSync(`bun install`, { cwd: projectPath, stdio: 'inherit' });
       } catch {
-        console.log('bun install failed; falling back to npm install..');
-        execSync(`npm install`, { cwd: projectPath, stdio: 'inherit' });
+        console.error('bun install failed. Aborting (Bun-only mode).');
+        process.exit(1);
       }
     } else {
       console.log('Dependencies already satisfied (nothing to install).');
@@ -148,8 +148,8 @@ function installAppDeps(projectPath: string){
   try{
     execSync(`bun add ${missing.join(' ')}`, {cwd: projectPath, stdio: 'inherit'});
   } catch {
-    console.log('bun add failed; falling back to npm install..');
-    execSync(`npm install ${missing.join(' ')}`, {cwd: projectPath, stdio: 'inherit'});
+    console.error('bun add failed. Aborting (Bun-only mode).');
+    process.exit(1);
   }
 }
 

@@ -1,4 +1,3 @@
-// router.ts (Final, Corrected Version)
 import { Context, Next } from 'hono';
 import { z, ZodObject, ZodSchema } from 'zod';
 import { SumiContext, ValidationTarget } from './types';
@@ -42,21 +41,7 @@ export type TypedRouteHandler<T extends ValidationSchemaMap> = (
   }
 ) => Response | Promise<Response>;
 
-// --- The SINGLE FIX is inside this type definition ---
-export type OpenApiConfig = Omit<DescribeRouteOptions, 'responses'> & {
-  responses?: {
-    [statusCode: string]: {
-      description: string;
-      content?: {
-        'application/json': {
-          // THIS IS THE ONLY CHANGE: Changed from 'ZodSchema' to 'any'.
-          // This allows the object returned by the resolver() function to be accepted.
-          schema: any;
-        };
-      };
-    };
-  };
-};
+export type OpenApiConfig = DescribeRouteOptions;
 
 export interface RouteConfig<T extends ValidationSchemaMap> {
   schema?: T;

@@ -26,18 +26,7 @@ export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: SumiContext &
         valid: <K extends keyof T & ValidationTarget>(target: K) => T[K] extends ZodSchema ? z.infer<T[K]> : any;
     };
 }) => Response | Promise<Response>;
-export type OpenApiConfig = Omit<DescribeRouteOptions, 'responses'> & {
-    responses?: {
-        [statusCode: string]: {
-            description: string;
-            content?: {
-                'application/json': {
-                    schema: any;
-                };
-            };
-        };
-    };
-};
+export type OpenApiConfig = DescribeRouteOptions;
 export interface RouteConfig<T extends ValidationSchemaMap> {
     schema?: T;
     handler: TypedRouteHandler<T>;

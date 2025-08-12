@@ -1,5 +1,7 @@
 import { Context, HonoRequest } from 'hono';
 import { z, ZodSchema, ZodObject } from 'zod';
+import { ApiReferenceConfiguration } from '@scalar/hono-api-reference';
+import { OpenApiSpecsOptions } from 'hono-openapi';
 export type ValidationTarget = 'json' | 'form' | 'query' | 'param' | 'header' | 'cookie';
 export type StaticRouteConfig = {
     path: string;
@@ -26,11 +28,10 @@ export interface SumiHooks {
     onBuild?: () => Promise<void> | void;
     onTest?: () => Promise<void> | void;
 }
-export interface DocsConfig {
+export type DocsConfig = Omit<Partial<ApiReferenceConfiguration>, 'url'> & {
     path?: string;
-    theme?: 'alternate' | 'default' | 'moon' | 'purple' | 'solarized' | 'none';
-    pageTitle?: string;
-}
+};
+export type OpenApiConfig = OpenApiSpecsOptions;
 export type SumiConfig = {
     app?: import('hono').Hono;
     logger: boolean;
@@ -39,17 +40,7 @@ export type SumiConfig = {
     routesDir?: string;
     port: number;
     static?: StaticRouteConfig[];
-    openapi?: {
-        info: {
-            title: string;
-            version: string;
-            description?: string;
-        };
-        servers?: {
-            url: string;
-            description?: string;
-        }[];
-    };
+    openapi?: OpenApiConfig;
     docs?: DocsConfig;
     hooks?: SumiHooks;
     env?: EnvConfig<any>;

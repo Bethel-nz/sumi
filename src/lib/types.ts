@@ -1,5 +1,7 @@
 import { Context, HonoRequest } from 'hono';
 import { z, ZodSchema, ZodObject } from 'zod';
+import { ApiReferenceConfiguration } from '@scalar/hono-api-reference';
+import { OpenApiSpecsOptions, generateSpecs } from 'hono-openapi';
 
 // Validation target types
 export type ValidationTarget =
@@ -55,11 +57,10 @@ export interface SumiHooks {
 }
 
 // Docs configuration
-export interface DocsConfig {
-  path?: string; // Default: '/docs'
-  theme?: 'alternate' | 'default' | 'moon' | 'purple' | 'solarized' | 'none';
-  pageTitle?: string; // Default: 'Sumi API Documentation'
-}
+export type DocsConfig = Omit<Partial<ApiReferenceConfiguration>, 'url'> & {
+  path?: string;
+};
+export type OpenApiConfig = OpenApiSpecsOptions;
 
 // Main Sumi configuration
 export type SumiConfig = {
@@ -70,14 +71,7 @@ export type SumiConfig = {
   routesDir?: string;
   port: number;
   static?: StaticRouteConfig[];
-  openapi?: {
-    info: {
-      title: string;
-      version: string;
-      description?: string;
-    };
-    servers?: { url: string; description?: string }[];
-  };
+  openapi?: OpenApiConfig;
   docs?: DocsConfig;
   hooks?: SumiHooks;
   env?: EnvConfig<any>;

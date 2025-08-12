@@ -18,6 +18,7 @@ export declare class Sumi {
     private validatedEnv;
     private openApiSetup;
     constructor(default_args: SumiConfig);
+    private generateMiddlewareTypes;
     private is_valid_file;
     private convertToHonoRoute;
     private build_routes;

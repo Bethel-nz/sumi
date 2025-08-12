@@ -1,81 +1,64 @@
-# Sumi 🔥
+# Sumi
 
-Sumi is a blazing fast web framework built on top of [Hono](https://hono.dev), adding Next.js-style file-based routing, automatic OpenAPI docs, and a powerful CLI — all optimized for the Bun runtime.
+Sumi is a file-based routing and configuration layer for [Hono](https://hono.dev), designed to streamline backend development on the Bun runtime. It integrates OpenAPI generation, Zod validation, and a command-line interface to provide a structured development experience.
 
-If you love Hono's speed and simplicity, but want:
+Choose Sumi if you require Hono's performance but need a more structured, convention-over-configuration approach for your project.
 
-✅ Route-by-file conventions
+## Core Features
 
-✅ Built-in Zod validation
-
-✅ Auto-generated OpenAPI + docs UI
-
-✅ Hot reload + DX-focused tooling
-
-...then Sumi is the framework layer you didn't know you needed.
-
-## ✨ Features
-
-- **🚀 File-based routing** - Intuitive directory structure maps to URL paths
-- **📚 Automatic OpenAPI docs** - Beautiful API documentation with Scalar UI
-- **✅ Built-in validation** - Zod schemas for request/response validation
-- **🔧 Powerful CLI** - Generate projects, routes, and run servers
-- **⚡ Hot reload** - Lightning-fast development with file watching
-- **🌍 Environment validation** - Type-safe environment variables
-- **🧪 Testing utilities** - Built-in testing helpers
-- **🛡️ Middleware system** - Directory-based and route-specific middleware
-- **📦 Zero config** - Works out of the box with sensible defaults
+- **File-based Routing**: Maps directory structure to URL paths (e.g., `routes/users/[id].ts` -> `/users/:id`).
+- **Integrated OpenAPI Generation**: Automatically generates an `openapi.json` specification from your routes and Zod schemas.
+- **Schema-driven Validation**: Leverages Zod for compile-time and runtime validation of requests (params, query, JSON body).
+- **Command-Line Interface**: Includes tools for project scaffolding, code generation, and running the development server.
+- **Hot Reload**: The development server (`sumi dev`) monitors file changes and reloads automatically.
+- **Environment Validation**: Enforces required environment variables and validates their types on startup.
+- **Middleware System**: Supports directory-level (global, nested) and per-route middleware.
 
 ## Quick Start
 
-### Create a new project
+### 1. Create a new project
 
 ```bash
 # Using bunx (recommended)
 bunx @bethel-nz/sumi new my-api
-
-# Or install globally
-bun install -g @bethel-nz/sumi
-sumi new my-api
 ```
 
-### Start developing
+### 2. Start the development server
 
 ```bash
 cd my-api
 bun install
-sumi dev  # 🔥 Start the development server
+sumi dev
 ```
 
-That's it! Your API is running on `http://localhost:3000` with:
+The server will be available at `http://localhost:3000`, with the following endpoints enabled by default:
 
-- 📖 Interactive docs at `/docs`
-- 🔗 OpenAPI spec at `/openapi.json`
-- 🔄 Hot reload on file changes
+- `/docs`: Interactive API documentation (Scalar UI).
+- `/openapi.json`: The raw OpenAPI specification.
+- Hot reloading is active.
 
 ## Project Structure
+
+A new Sumi project uses the following directory structure:
 
 ```text
 my-api/
 ├── routes/                    # API routes (file-based)
-│   ├── index.ts              # GET /
-│   ├── users/
-│   │   ├── index.ts          # GET/POST /users
-│   │   ├── [id].ts           # GET/PUT/DELETE /users/:id
-│   │   └── [id]/
-│   │       └── posts/
-│   │           └── index.ts  # GET/POST /users/:id/posts
+│   ├── index.ts              # Handles GET /
+│   └── users/
+│       ├── index.ts          # Handles GET/POST /users
+│       └── [id].ts           # Handles GET/PUT/DELETE /users/:id
 ├── middleware/               # Reusable middleware
-│   ├── _index.ts            # Global middleware (applied to all routes)
-│   ├── auth.ts              # Authentication middleware
-│   ├── request_track.ts     # Request tracking middleware
-│   └── rate_limit.ts        # Rate limiting middleware
-└── sumi.config.ts           # Configuration file
+│   ├── _index.ts             # Applied to all routes in the project
+│   └── auth.ts               # Example route-specific middleware
+└── sumi.config.ts           # Main configuration file
 ```
 
 ## Route Examples
 
-### Simple Route
+### Basic Route
+
+A file's exported `default` object defines the handlers for each HTTP method.
 
 ```typescript
 // routes/hello.ts
@@ -88,6 +71,8 @@ export default createRoute({
 
 ### Validated Route with OpenAPI
 
+By adding a `schema` and `openapi` block, you enable validation and documentation.
+
 ```typescript
 // routes/users/index.ts
 import { z } from 'zod';
@@ -99,6 +84,7 @@ const userSchema = z.object({
 });
 
 export default createRoute({
+  // This route does not define a schema, but provides OpenAPI metadata.
   get: {
     openapi: {
       summary: 'Get all users',
@@ -106,16 +92,14 @@ export default createRoute({
         '200': {
           description: 'List of users',
           content: {
-            'application/json': {
-              schema: z.array(userSchema),
-            },
+            'application/json': { schema: z.array(userSchema) },
           },
         },
       },
     },
     handler: (c) => c.json([{ name: 'John', email: 'john@example.com' }]),
   },
-
+  // This route validates the incoming JSON body against the schema.
   post: {
     schema: { json: userSchema },
     openapi: {
@@ -124,61 +108,64 @@ export default createRoute({
         '201': {
           description: 'User created',
           content: {
-            'application/json': {
-              schema: userSchema,
-            },
+            'application/json': { schema: userSchema },
           },
         },
       },
     },
     handler: (c) => {
-      const userData = c.req.valid('json'); // Fully typed!
+      // c.req.valid('json') returns the validated and typed data.
+      const userData = c.req.valid('json');
       return c.json(userData, 201);
     },
   },
 });
 ```
 
-### Dynamic Routes
+### Dynamic Route
+
+Bracketed filenames (`[param]`) create dynamic routes. The parameter is available via `c.req.param()`.
 
 ```typescript
-// routes/users/[id]/posts/[slug].ts
+// routes/users/[id].ts
 import { createRoute } from '@bethel-nz/sumi/router';
 
 export default createRoute({
   get: (c) => {
     const userId = c.req.param('id');
-    const postSlug = c.req.param('slug');
-    return c.json({ userId, postSlug });
+    return c.json({ userId });
   },
 });
 ```
 
 ## Middleware System
 
-### Global Middleware
+### Global and Scoped Middleware
 
-Applied to all routes automatically by placing files starting with `_` in the middleware directory:
+Middleware is applied based on its location. A file named `_index.ts` in the `middleware` directory applies to all routes. A file named `_index.ts` in `middleware/admin/` would apply to all routes inside a corresponding `routes/admin/` directory.
 
 ```typescript
 // middleware/_index.ts
 import { createMiddleware } from '@bethel-nz/sumi/router';
 
+// This middleware will run for every request.
 export default createMiddleware({
   _: async (c, next) => {
     const start = Date.now();
     await next();
     const duration = Date.now() - start;
-    console.log(`${c.req.method} ${c.req.url} - ${duration}ms`);
+    console.log(
+      `HTTP ${c.req.method} ${c.req.url} - ${c.res.status} (${duration}ms)`
+    );
   },
 });
 ```
 
 ### Route-Specific Middleware
 
-Create individual middleware files and reference them by name in your routes:
+Individual middleware files can be applied explicitly in a route's configuration.
 
-#### Creating Middleware
+#### 1. Define the Middleware
 
 ```typescript
 // middleware/auth.ts
@@ -187,141 +174,44 @@ import { createMiddleware } from '@bethel-nz/sumi/router';
 export default createMiddleware({
   _: async (c, next) => {
     const authHeader = c.req.header('Authorization');
-
     if (!authHeader?.startsWith('Bearer ')) {
       return c.json({ error: 'Unauthorized' }, 401);
     }
-
-    // Add user info to context using c.set
+    // Add data to the context for downstream handlers.
     c.set('user', { id: '123', role: 'admin' });
     await next();
   },
 });
 ```
 
-```typescript
-// middleware/request_track.ts
-import { createMiddleware } from '@bethel-nz/sumi/router';
+#### 2. Apply it in a Route
 
-// In-memory store for request counts
-const requestCounts = new Map<string, number>();
-
-export default createMiddleware({
-  _: async (c, next) => {
-    const method = c.req.method;
-    const path = new URL(c.req.url).pathname;
-    const endpointId = `${method}:${path}`;
-
-    // Track request count
-    const currentCount = requestCounts.get(endpointId) || 0;
-    const newCount = currentCount + 1;
-    requestCounts.set(endpointId, newCount);
-
-    console.log(`📊 [Request Tracker] ${endpointId} | Request #${newCount}`);
-
-    // Add tracking info to context using c.set
-    c.set('requestTrack', {
-      endpointId,
-      requestCount: newCount,
-      timestamp: new Date().toISOString(),
-    });
-
-    await next();
-  },
-});
-```
-
-#### Using Middleware in Routes
+Reference the middleware by its filename (without the extension) in the `middleware` array.
 
 ```typescript
 // routes/admin/users.ts
-import { z } from 'zod';
 import { createRoute } from '@bethel-nz/sumi/router';
 
 export default createRoute({
   get: {
-    // Apply multiple middleware in order
-    middleware: ['auth', 'request_track'],
+    // Apply the 'auth' middleware to this specific endpoint.
+    middleware: ['auth'],
     openapi: {
       summary: 'Get admin users',
-      security: [{ bearerAuth: [] }], // Shows auth requirement in docs
+      security: [{ bearerAuth: [] }],
     },
     handler: (c) => {
-      // Access middleware-injected data
+      // Retrieve context data set by the middleware.
       const user = c.get('user');
-      const trackInfo = c.get('requestTrack');
-
-      return c.json({
-        message: `Admin data for ${user.id}`,
-        requestCount: trackInfo.requestCount,
-        timestamp: trackInfo.timestamp,
-      });
+      return c.json({ message: `Admin data for user ${user.id}` });
     },
-  },
-
-  post: {
-    middleware: ['auth', 'rate_limit'], // Different middleware combination
-    schema: {
-      json: z.object({
-        name: z.string().min(1),
-        role: z.enum(['admin', 'user']),
-      }),
-    },
-    handler: (c) => {
-      const userData = c.req.valid('json');
-      return c.json({ created: userData }, 201);
-    },
-  },
-});
-```
-
-#### Single Route Middleware
-
-```typescript
-// routes/public/stats.ts
-import { createRoute } from '@bethel-nz/sumi/router';
-
-export default createRoute({
-  get: {
-    middleware: ['request_track'], // Only track this endpoint
-    handler: (c) => {
-      const trackInfo = c.get('requestTrack');
-
-      return c.json({
-        message: 'Public stats endpoint',
-        hits: trackInfo.requestCount,
-        lastAccessed: trackInfo.timestamp,
-      });
-    },
-  },
-});
-```
-
-#### Conditional Middleware
-
-```typescript
-// routes/api/data.ts
-import { createRoute } from '@bethel-nz/sumi/router';
-
-export default createRoute({
-  get: {
-    // No middleware - public endpoint
-    handler: (c) => c.json({ data: 'public data' }),
-  },
-
-  post: {
-    middleware: ['auth'], // Protected endpoint
-    handler: (c) => c.json({ data: 'protected data' }),
-  },
-
-  delete: {
-    middleware: ['auth', 'admin_only'], // Admin-only endpoint
-    handler: (c) => c.json({ message: 'deleted' }),
   },
 });
 ```
 
 ## Configuration
+
+The `sumi.config.ts` file centralizes project-wide settings.
 
 ```typescript
 // sumi.config.ts
@@ -331,40 +221,44 @@ import { z } from 'zod';
 export default defineConfig({
   port: 3000,
 
-  // Environment validation
+  // Defines environment variables required by the application.
+  // Missing or invalid variables will cause an error on startup.
   env: {
     schema: {
       DATABASE_URL: z.string().url(),
       JWT_SECRET: z.string().min(32),
       NODE_ENV: z.enum(['development', 'production']).default('development'),
     },
-    required: ['DATABASE_URL'], // Required in production
+    // Specify which variables are mandatory in a production environment.
+    required: ['DATABASE_URL'],
   },
 
-  // Static file serving
+  // Serves static files from the specified directory.
   static: [{ path: '/public/*', root: './public' }],
 
-  // OpenAPI documentation
+  // Configuration for generated OpenAPI specification.
   openapi: {
     info: {
       title: 'My API',
       version: '1.0.0',
-      description: 'A beautiful API built with Sumi',
+      description: 'API for my application',
     },
   },
 
-  // Documentation UI
+  // Configuration for the Scalar documentation UI.
+  // This requires the 'openapi' configuration to be present.
   docs: {
-    path: '/docs', // Custom docs path
-    theme: 'purple', // Scalar theme
+    path: '/docs', // Custom URL for the docs page.
+    theme: 'purple',
     pageTitle: 'My API Docs',
   },
 
-  // Lifecycle hooks
+  // Application lifecycle hooks.
   hooks: {
-    onReady: () => console.log('🚀 Server is ready!'),
-    onShutdown: () => console.log('👋 Server shutting down...'),
-    onError: (error, c) => console.error('Error:', error.message),
+    onReady: () => console.log('Server is ready.'),
+    onShutdown: () => console.log('Server is shutting down.'),
+    onError: (error, c) =>
+      console.error(`Error on ${c.req.path}:`, error.message),
   },
 });
 ```
@@ -372,106 +266,72 @@ export default defineConfig({
 ## CLI Commands
 
 ```bash
-# Development
-sumi dev                    # Start dev server with hot reload
-sumi dev --port 4000       # Custom port
-sumi dev --config custom.config.ts
+# Start dev server with hot reload
+sumi dev
 
-# Production
-sumi start                 # Start production server
-sumi build                 # Build for production
+# Start production server
+sumi start
 
-# Project scaffolding
-sumi new my-project        # Create new project
-sumi init                  # Initialize in existing directory
+# Create a new Sumi project
+sumi new <project-name>
 
-# Code generation
-sumi generate route users        # Create routes/users.ts
-sumi generate route users/posts  # Create routes/users/posts/index.ts
-sumi generate route users/[id]   # Create routes/users/[id].ts
-sumi generate middleware auth    # Create middleware/auth.ts
+# Generate a route file
+sumi generate route users/[id] --methods get,put,delete
+
+# Generate a middleware file
+sumi generate middleware rate-limiter
 ```
 
 ## Testing
+
+Sumi provides a test utility that loads your application instance for use in tests.
 
 ```typescript
 // tests/users.test.ts
 import { createTestApp } from '@bethel-nz/sumi/testing';
 import { test, expect } from 'bun:test';
 
-test('GET /users should return users list', async () => {
-  const app = await createTestApp(); // Loads your project automatically
+test('GET /users should return an array', async () => {
+  // createTestApp loads sumi.config.ts and builds the route tree.
+  const app = await createTestApp();
 
   const response = await app.request('/users');
   expect(response.status).toBe(200);
 
-  const users = await response.json();
-  expect(Array.isArray(users)).toBe(true);
+  const body = await response.json();
+  expect(Array.isArray(body)).toBe(true);
 });
 ```
 
 ## Environment Variables
 
-Access validated environment variables in your routes:
+Access validated environment variables from the context in any route handler.
 
 ```typescript
-// In your routes
+// In any route file
+import { createRoute } from '@bethel-nz/sumi/router';
+
 export default createRoute({
   get: (c) => {
-    // These are fully typed and guaranteed to exist!
-    const dbUrl = c.env.DATABASE_URL;
-    const jwtSecret = c.env.JWT_SECRET;
-    const nodeEnv = c.env.NODE_ENV;
-
-    return c.json({ environment: nodeEnv });
+    // c.get('env') provides the validated & typed environment object.
+    const nodeEnv = c.get('env').NODE_ENV;
+    return c.json({ current_environment: nodeEnv });
   },
 });
 ```
 
-## Why Sumi?
-
-- **🏃‍♂️ Fast**: Built on Hono, one of the fastest web frameworks
-- **🧘‍♀️ Simple**: File-based routing eliminates configuration overhead
-- **🔒 Type-safe**: Full TypeScript support with Zod validation
-- **📖 Self-documenting**: Automatic OpenAPI generation from your code
-- **🔧 Developer-friendly**: Excellent DX with CLI tools and hot reload
-- **⚡ Modern**: Built for Bun runtime (Node.js support coming soon)
-
 ## Framework Comparison
 
-| Feature             | Sumi | Express | Fastify | Hono |
-| ------------------- | ---- | ------- | ------- | ---- |
-| File-based routing  | ✅   | ❌      | ❌      | ❌   |
-| Auto OpenAPI docs   | ✅   | ❌      | 🔧      | ❌   |
-| Built-in validation | ✅   | ❌      | 🔧      | 🔧   |
-| TypeScript-first    | ✅   | 🔧      | 🔧      | ✅   |
-| Zero config         | ✅   | ❌      | ❌      | ✅   |
-| CLI tooling         | ✅   | ❌      | ❌      | ❌   |
+| Feature                 | Sumi | Hono | Express | Fastify |
+| ----------------------- | ---- | ---- | ------- | ------- |
+| File-based routing      | ✅   | ❌   | ❌      | ❌      |
+| Auto OpenAPI docs       | ✅   | 🔧   | 🔧      | 🔧      |
+| Built-in Zod validation | ✅   | 🔧   | ❌      | 🔧      |
+| TypeScript-first        | ✅   | ✅   | 🔧      | 🔧      |
+| CLI tooling             | ✅   | ❌   | ❌      | ❌      |
 
-## Examples
-
-Check out the [examples directory](./example) for more comprehensive examples including:
-
-- Authentication with JWT
-- Database integration
-- File uploads
-- WebSocket support
-- Microservice architecture
-
-## Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+`🔧`: Requires manual integration or plugins.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-
-**[Documentation](https://sumi.dev) • [Examples](./example) • [Discord](https://discord.gg/sumi)**
-
-Made with ❤️ by [Bethel](https://github.com/bethel-nz)
-
-</div>
+MIT

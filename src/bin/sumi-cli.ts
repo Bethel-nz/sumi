@@ -25,6 +25,38 @@ function isDirEmpty(dir: string){
   }
 }
 
+function ensureFavicon(publicDirAbs: string)
+{
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const candidates = [
+    path.resolve(here, '../lib/public/favicon.ico'),
+    path.resolve(here, '../../lib/public/favicon.ico'),
+    path.resolve(here, './public/favicon.ico'),
+  ]
+
+  let src: string | null = null;
+  for(const p of candidates)
+  {
+    if(fs.existsSync(p)) {src = p; break;}
+  }
+
+  if(!fs.existsSync(publicDirAbs)) fs.mkdirSync(publicDirAbs, {recursive: true});
+
+  const dest = path.join(publicDirAbs, 'favicon.ico');
+
+  if(fs.existsSync(dest)){
+    return;
+  }
+
+  if(src){
+    fs.copyFileSync(src, dest);
+    console.log(`📦 Copied default favicon to ${dest}`);
+
+  } else {
+    console.warn('⚠️  No default favicon found in the framework; skipping creation.');
+  }
+}
+
 // Ensures there is package.json and creates if it does not exist
 function ensurePackageJson(projectPath: string) {
   const pkgPath = path.join(projectPath, 'package.json');
@@ -716,23 +748,53 @@ temp/
 `.trim();
 }
 
-function generateConfigContent(): string {
+function generateConfigContent(options?: {
+  basePath?: string;
+  routesDir?: string;
+  middlewareDir?: string;
+  port?: number;
+}) {
+  // normalize basePath: '' -> '/', 'api' -> '/api'
+  const rawBase = (options?.basePath ?? '/').trim();
+
+  const basePath = rawBase === '' ? '/' : rawBase.startsWith('/') ? rawBase : `${rawBase}`;
+
+  const routesDir = options?.routesDir ?? 'routes';
+  const middlewareDir = options?.middlewareDir ?? 'middleware';
+  const port = options?.port ?? 3000;
+
+  const serverUrl = `http://localhost:${port}${basePath === '/' ? '' : basePath}`
+
   return `
   import { defineConfig } from '@bethel-nz/sumi';
+  import { fileURLToPath } from 'url';
+  import path from 'path';
+
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+
+  const PUBLIC_DIR = path.join(__dirname, 'public'); 
 
   export default defineConfig({
-    port: process.env.SUMI_PORT ? parseInt(process.env.SUMI_PORT) : 3000,
+    port: ${port},
     logger: true,
-    
-    // Uncomment and configure as needed:
-    basePath: '/api',
-    routesDir: './routes',
-    middlewareDir: './middleware',  // <-- This should be the default
-    
+    basePath: '${basePath}',
+    routesDir: './${routesDir}',
+    middlewareDir: './${middlewareDir}',
+
+    // Static files are mounted under the app's basePath automatically by Sumi,
+    // so '/public/*' becomes '${basePath === '/' ? '' : basePath}/public/*'
     static: [
-      { path: '/public/*', root: './public' }
+      { path: '/public/*', root: PUBLIC_DIR },
     ],
-    
+
+    // This ensures even JSON responses hint the browser to fetch the favicon
+    // hooks: {
+    //   onResponse: async (c) => {
+    //     c.header('Link', '</favicon.ico?v=1>; rel="icon"; type="image/x-icon"', { append: true });
+    //   },
+    // },
+
     openapi: {
       documentation: {
         info: {
@@ -741,63 +803,22 @@ function generateConfigContent(): string {
           description: 'Example Sumi project',
         },
         servers: [
-          { url: 'http://localhost:3000/api', description: 'Local' }, // include basePath
+          { url: '${serverUrl}', description: 'Local' },
         ],
       }
     },
     
+    // Scalar docs will be available at ${basePath === '/' ? '/docs' : basePath + '/docs'}
     docs: {
       path: '/docs',
       theme: 'purple',
       pageTitle: 'Sumi API Docs',
+      // Keep root-path here; the framework serves BOTH /favicon.ico and ${basePath}/favicon.ico
+      favicon: '/favicon.ico?v=2',
     }
   });
 `.trim();
 }
-
-// Commands
-// cli
-//   .command('new <projectName>', 'Create a new Sumi project')
-//   .action(async (projectName: string) => {
-//     console.log(`✨ Creating new Sumi project: ${projectName}`);
-//     const projectPath = path.resolve(process.cwd(), projectName);
-
-//     if (fs.existsSync(projectPath)) {
-//       console.error(`❌ Directory already exists: ${projectPath}`);
-//       process.exit(1);
-//     }
-
-//     createDirectory(projectPath);
-
-//     // Create package.json
-//     const packageJsonPath = path.join(projectPath, 'package.json');
-//     fs.writeFileSync(packageJsonPath, generatePackageJsonContent(projectName));
-//     console.log(`📄 Created package.json`);
-
-//     // Install dependencies
-//     console.log(`📦 Installing dependencies...`);
-//     try {
-//       execSync(
-//         'bun add @bethel-nz/sumi hono zod@^4.0.0 @scalar/hono-api-reference hono-openapi zod-openapi cac',
-//         {
-//           cwd: projectPath,
-//           stdio: 'inherit',
-//         }
-//       );
-//     } catch (error) {
-//       console.error('❌ Failed to install dependencies.', error);
-//       process.exit(1);
-//     }
-
-//     // Initialize project
-//     console.log(`⚙️ Initializing project configuration...`);
-//     await initProject(projectPath);
-
-//     console.log(`\n✅ Project '${projectName}' created successfully!`);
-//     console.log(`\nTo get started:`);
-//     console.log(`  cd ${projectName}`);
-//     console.log(`  bun run dev`);
-//   });
 
 cli
   .command('new <projectName>', 'Create a new Sumi project')
@@ -1159,8 +1180,25 @@ async function initProject(basePath: string, force = false) {
     createDirectory(path.join(basePath, responses.staticRoot));
   }
 
+  const publicDir = path.join(basePath, 'public');
+  createDirectory(publicDir);
+  ensureFavicon(publicDir);
+
+  console.log(responses)
+
   // Write config file
-  fs.writeFileSync(configPath, generateConfigContent());
+  fs.writeFileSync(
+    configPath,
+    generateConfigContent({
+      basePath: responses.basePath || '/',
+      routesDir: responses.routesDir || 'routes',
+      middlewareDir: responses.middlewareDir || 'middleware',
+      port: responses.port || 3000,
+    })
+  );
+
+
+  // fs.writeFileSync(configPath, generateConfigContent());
   console.log(`📄 Created sumi.config.ts`);
 
   // Create only the index route

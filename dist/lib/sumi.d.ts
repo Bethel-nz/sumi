@@ -17,6 +17,9 @@ export declare class Sumi {
     private hooks;
     private validatedEnv;
     private openApiSetup;
+    private normalizeBasePath;
+    private joinBase;
+    private joinPath;
     constructor(default_args: SumiConfig);
     private generateMiddlewareTypes;
     private is_valid_file;

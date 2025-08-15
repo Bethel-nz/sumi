@@ -10,7 +10,8 @@
   "scripts": {
     "build:js": "bun build src/bin/sumi-cli.ts --outfile=dist/bin/sumi-cli.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference && bun build src/index.ts --outfile=dist/index.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference",
     "build:dts": "tsc",
-    "build": "bun run build:js && bun run build:dts",
+    "build:assets": "bun ./scripts/copy-assets.mjs",
+    "build": "bun run build:js && bun run build:dts && bun run build:assets",
     "prepare": "bun run build",
     "dev": "sumi dev",
     "start": "sumi start",
@@ -19,19 +20,27 @@
   },
   "exports": {
     ".": {
-      "require": "./dist/index.js",
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
     },
     "./router": {
-      "require": "./dist/src/lib/router.js",
-      "import": "./dist/src/lib/router.js",
-      "types": "./dist/src/lib/router.d.ts"
+      "require": "./dist/lib/router.js",
+      "import": "./dist/lib/router.js",
+      "types": "./dist/lib/router.d.ts"
     },
     "./testing": {
-      "require": "./dist/src/lib/testing.js",
-      "import": "./dist/src/lib/testing.js",
-      "types": "./dist/src/lib/testing.d.ts"
+      "require": "./dist/lib/testing.js",
+      "import": "./dist/lib/testing.js",
+      "types": "./dist/lib/testing.d.ts"
+    },
+    "./types":  { 
+      "import": "./dist/types/index.js", 
+      "types": "./dist/types/index.d.ts" }
+  },
+  "typesVersions": {
+    "*": {
+      "types": ["dist/types/index.d.ts"],
+      "types/*": ["dist/types/*"]
     }
   },
   "files": [

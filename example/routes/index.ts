@@ -27,7 +27,7 @@ export default createRoute({
   get: {
     schema: { query: querySchema, param: paramSchema },
     handler: (c: ValidationContext<RouteSchema>) => {
-      const query = c.valid.query!;
+      const query = c.req.valid("query")!;
       const currentId = c.get('id');
       console.log('[INDEX ROUTE] Route handler received query:', query);
 

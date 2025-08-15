@@ -35,6 +35,8 @@ import {
   DocsConfig,
 } from './types';
 
+
+
 export class Sumi {
   public app: Hono;
   private default_dir: string;
@@ -51,7 +53,35 @@ export class Sumi {
   private docsConfig: DocsConfig | undefined;
   private hooks: SumiHooks;
   private validatedEnv: any = {};
-  private openApiSetup: boolean = false; // Add this to track OpenAPI setup
+  private openApiSetup: boolean = false;
+
+
+  private normalizeBasePath(p?: string): string{
+    if(!p || p ==='/' ) return '';
+    return '/' + p.replace(/^\/*|\/*$/g, '');
+  }
+
+  private joinBase(base: string, sub: string): string{
+    const s = sub || '';
+    if(!base) return s.startsWith('/') ? s : `/${s}`;
+
+    const m = base.match(/^([a-z]+:\/\/[^/]+)(.*)$/i);
+    if(m){
+      const [, origin, basePath] = m as unknown as [string, string, string]
+      const joinedPath = this.joinPath(basePath, s);
+      return origin + joinedPath;
+    }
+    return this.joinPath(base, s);
+  }
+
+
+  private joinPath(a: string, b: string): string{
+    const left = a.endsWith('/') ? a.slice(0, -1) : a || '';
+    const right = b.startsWith('/') ? b : `/${b}`;
+    const combined = `${left}${right}`;
+    return combined || '/';
+  }
+
 
   constructor(default_args: SumiConfig) {
     this.app = default_args.app || new Hono();
@@ -60,8 +90,8 @@ export class Sumi {
     this.docsConfig = default_args.docs;
     this.hooks = default_args.hooks || {};
 
-    if (default_args.basePath) {
-      this.app_base_path = default_args.basePath;
+    this.app_base_path = this.normalizeBasePath(default_args.basePath);
+    if (this.app_base_path) {
       this.app = this.app.basePath(this.app_base_path);
     }
 
@@ -100,6 +130,17 @@ export class Sumi {
       await next();
     });
 
+    // Serve Static files (favicons, etc)
+    this.staticConfig.forEach((config) => {
+      if(config.path && config.root){
+        const absRoot = path.isAbsolute(config.root)
+        ? config.root
+        : path.resolve(config.root);
+        this.app.use(config.path, serveStatic({root: absRoot}))
+      }
+    })
+    
+
     // OpenAPI endpoints will be added after routes are built
 
     // Set up global request/response hooks
@@ -133,6 +174,7 @@ export class Sumi {
       );
     });
   }
+
 
   private async generateMiddlewareTypes(): Promise<void> {
     const sumiDir = path.resolve('.sumi');
@@ -504,9 +546,7 @@ export {};
   }
 
   private generateServerInfo(): string {
-    const baseUrl = `http://localhost:${this.config_port}${
-      this.app_base_path || ''
-    }`;
+    const baseUrl = `http://localhost:${this.config_port}` + (this.app_base_path || '');
 
     let info = `
 🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered
@@ -521,11 +561,11 @@ usage: curl -X GET ${baseUrl}`;
       // Add docs endpoint only if it's configured
       if (this.docsConfig) {
         const docsPath = (this.docsConfig as any).path || '/docs';
-        info += `\n  • API Docs: ${baseUrl}${docsPath}`;
+        info += `\n  • API Docs: ${this.joinBase(baseUrl, docsPath)}`;
       }
 
       // Add OpenAPI JSON endpoint
-      info += `\n  • OpenAPI Spec: ${baseUrl}/openapi.json`;
+      info += `\n  • OpenAPI Spec: ${this.joinBase(baseUrl, '/openapi.json')}`;
     }
 
     return info + '\n';
@@ -557,15 +597,15 @@ usage: curl -X GET ${baseUrl}`;
 
       // If docs are also configured, set up the Scalar UI endpoint.
       if (this.docsConfig) {
-        const { path, ...scalarConfig } = (this.docsConfig as any) || {};
-        const docsPath = path || '/docs';
+        const { path: docsCfgPath, ...scalarConfig } = (this.docsConfig as any) || {};
+        const docsPath = docsCfgPath || '/docs';
+
+        const specUrl = this.joinBase(this.app_base_path || '', '/openapi.json');
 
         this.app.get(
           docsPath,
           Scalar({
-            url: this.app_base_path
-              ? `${this.app_base_path}/openapi.json`
-              : '/openapi.json',
+            url: specUrl, 
             ...scalarConfig,
             pageTitle: scalarConfig.pageTitle || 'Sumi API Documentation',
           })
@@ -607,12 +647,39 @@ usage: curl -X GET ${baseUrl}`;
           this.server = null;
         }
 
+        const appFetch = this.fetch()
+
         // Start server if port is provided
         if (serverPort) {
           this.server = Bun.serve({
             port: serverPort,
-            fetch: this.fetch(),
             development: true,
+            fetch: async (req) => {
+              const url = new URL(req.url)
+              const cache = process.env.NODE_ENV === 'development' ? 'no-store' : 'public, max-age=86400'
+              const base = this.app_base_path ?? '';
+
+              
+              if (url.pathname === '/favicon.ico' || (base && url.pathname === `${base}/favicon.ico`)) {
+                const file = Bun.file(path.resolve('public/favicon.ico'));
+                if (await file.exists()) {
+                  const mime =
+                    url.pathname.endsWith('.ico') ? 'image/x-icon' :
+                    url.pathname.endsWith('.png') ? 'image/png' :
+                    url.pathname.endsWith('.webmanifest') ? 'application/manifest+json' :
+                    'application/octet-stream';
+
+                  return new Response(file, {
+                    headers: {
+                      'content-type': mime,
+                      'cache-control': cache,
+                    },
+                  });
+                }
+                return new Response('Not found', { status: 404 });
+              }
+              return appFetch(req);
+            },
           });
         }
       } else {

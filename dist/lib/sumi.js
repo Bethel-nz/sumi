@@ -26,15 +26,38 @@ export class Sumi {
     docsConfig;
     hooks;
     validatedEnv = {};
-    openApiSetup = false; // Add this to track OpenAPI setup
+    openApiSetup = false;
+    normalizeBasePath(p) {
+        if (!p || p === '/')
+            return '';
+        return '/' + p.replace(/^\/*|\/*$/g, '');
+    }
+    joinBase(base, sub) {
+        const s = sub || '';
+        if (!base)
+            return s.startsWith('/') ? s : `/${s}`;
+        const m = base.match(/^([a-z]+:\/\/[^/]+)(.*)$/i);
+        if (m) {
+            const [, origin, basePath] = m;
+            const joinedPath = this.joinPath(basePath, s);
+            return origin + joinedPath;
+        }
+        return this.joinPath(base, s);
+    }
+    joinPath(a, b) {
+        const left = a.endsWith('/') ? a.slice(0, -1) : a || '';
+        const right = b.startsWith('/') ? b : `/${b}`;
+        const combined = `${left}${right}`;
+        return combined || '/';
+    }
     constructor(default_args) {
         this.app = default_args.app || new Hono();
         this.config_port = default_args.port;
         this.openapiConfig = default_args.openapi;
         this.docsConfig = default_args.docs;
         this.hooks = default_args.hooks || {};
-        if (default_args.basePath) {
-            this.app_base_path = default_args.basePath;
+        this.app_base_path = this.normalizeBasePath(default_args.basePath);
+        if (this.app_base_path) {
             this.app = this.app.basePath(this.app_base_path);
         }
         this.logger = default_args.logger;
@@ -60,6 +83,15 @@ export class Sumi {
             // Use c.var to store custom variables
             c.env = this.validatedEnv;
             await next();
+        });
+        // Serve Static files (favicons, etc)
+        this.staticConfig.forEach((config) => {
+            if (config.path && config.root) {
+                const absRoot = path.isAbsolute(config.root)
+                    ? config.root
+                    : path.resolve(config.root);
+                this.app.use(config.path, serveStatic({ root: absRoot }));
+            }
         });
         // OpenAPI endpoints will be added after routes are built
         // Set up global request/response hooks
@@ -368,7 +400,7 @@ export {};
         this.openApiSetup = false; // Reset OpenAPI setup flag
     }
     generateServerInfo() {
-        const baseUrl = `http://localhost:${this.config_port}${this.app_base_path || ''}`;
+        const baseUrl = `http://localhost:${this.config_port}` + (this.app_base_path || '');
         let info = `
 🔥 Sumi v1.0 is burning hot and ready to serve! Routes: ${this.uniqueRoutes.size} route(s) registered
 
@@ -380,10 +412,10 @@ usage: curl -X GET ${baseUrl}`;
             // Add docs endpoint only if it's configured
             if (this.docsConfig) {
                 const docsPath = this.docsConfig.path || '/docs';
-                info += `\n  • API Docs: ${baseUrl}${docsPath}`;
+                info += `\n  • API Docs: ${this.joinBase(baseUrl, docsPath)}`;
             }
             // Add OpenAPI JSON endpoint
-            info += `\n  • OpenAPI Spec: ${baseUrl}/openapi.json`;
+            info += `\n  • OpenAPI Spec: ${this.joinBase(baseUrl, '/openapi.json')}`;
         }
         return info + '\n';
     }
@@ -409,12 +441,11 @@ usage: curl -X GET ${baseUrl}`;
             });
             // If docs are also configured, set up the Scalar UI endpoint.
             if (this.docsConfig) {
-                const { path, ...scalarConfig } = this.docsConfig || {};
-                const docsPath = path || '/docs';
+                const { path: docsCfgPath, ...scalarConfig } = this.docsConfig || {};
+                const docsPath = docsCfgPath || '/docs';
+                const specUrl = this.joinBase(this.app_base_path || '', '/openapi.json');
                 this.app.get(docsPath, Scalar({
-                    url: this.app_base_path
-                        ? `${this.app_base_path}/openapi.json`
-                        : '/openapi.json',
+                    url: specUrl,
                     ...scalarConfig,
                     pageTitle: scalarConfig.pageTitle || 'Sumi API Documentation',
                 }));
@@ -448,12 +479,34 @@ usage: curl -X GET ${baseUrl}`;
                     this.server.stop(true);
                     this.server = null;
                 }
+                const appFetch = this.fetch();
                 // Start server if port is provided
                 if (serverPort) {
                     this.server = Bun.serve({
                         port: serverPort,
-                        fetch: this.fetch(),
                         development: true,
+                        fetch: async (req) => {
+                            const url = new URL(req.url);
+                            const cache = process.env.NODE_ENV === 'development' ? 'no-store' : 'public, max-age=86400';
+                            const base = this.app_base_path ?? '';
+                            if (url.pathname === '/favicon.ico' || (base && url.pathname === `${base}/favicon.ico`)) {
+                                const file = Bun.file(path.resolve('public/favicon.ico'));
+                                if (await file.exists()) {
+                                    const mime = url.pathname.endsWith('.ico') ? 'image/x-icon' :
+                                        url.pathname.endsWith('.png') ? 'image/png' :
+                                            url.pathname.endsWith('.webmanifest') ? 'application/manifest+json' :
+                                                'application/octet-stream';
+                                    return new Response(file, {
+                                        headers: {
+                                            'content-type': mime,
+                                            'cache-control': cache,
+                                        },
+                                    });
+                                }
+                                return new Response('Not found', { status: 404 });
+                            }
+                            return appFetch(req);
+                        },
                     });
                 }
             }

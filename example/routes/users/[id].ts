@@ -11,7 +11,7 @@ export default createRoute({
       }),
     },
     handler: (c) => {
-      const { id } = c.valid.param!;
+      const { id } = c.req.valid("param")!;
 
       // In a real app, fetch from database using the ID
       return c.json({
@@ -35,8 +35,8 @@ export default createRoute({
       }),
     },
     handler: (c) => {
-      const { id } = c.valid.param!;
-      const updates = c.valid.json!;
+      const { id } = c.req.valid("param")!;
+      const updates = c.req.valid("json")!;
 
       // In a real app, update database record
       return c.json({
@@ -56,7 +56,7 @@ export default createRoute({
       }),
     },
     handler: (c) => {
-      const { id } = c.valid.param!;
+      const { id } = c.req.valid("param")!;
 
       // In a real app, delete from database
       return c.json({

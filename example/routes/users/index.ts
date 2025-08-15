@@ -35,7 +35,7 @@ export default createRoute({
       }),
     },
     handler: (c) => {
-      const { page, limit } = c.valid.query!;
+      const { page, limit } = c.req.valid("query")!;
 
       // Example users data - in a real app, this would come from a database
       const users = Array.from({ length: limit }, (_, i) => ({
@@ -62,7 +62,7 @@ export default createRoute({
       }),
     },
     handler: (c) => {
-      const userData = c.valid.json!;
+      const userData = c.req.valid("json")!;
 
       // In a real app, save to database here
       return c.json(
@@ -84,8 +84,8 @@ export default createRoute({
       json: userBodySchema,
     },
     handler: (c) => {
-      const { id } = c.valid.param;
-      const userData = c.valid.json;
+      const { id } = c.req.valid("param");
+      const userData = c.req.valid("json");
 
       return c.json({
         success: true,
@@ -102,7 +102,7 @@ export default createRoute({
   delete: {
     schema: { param: userParamSchema },
     handler: (c) => {
-      const { id } = c.valid.param;
+      const { id } = c.req.valid("param");
 
       return c.json({
         success: true,

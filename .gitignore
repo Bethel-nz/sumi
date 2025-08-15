@@ -1,3 +1,7 @@
 # deps
 node_modules/
 # build
+
+./dist
+
+Architecture.md

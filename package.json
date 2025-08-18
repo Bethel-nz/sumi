@@ -1,6 +1,6 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A blazing fast web framework built on Hono with file-based routing, OpenAPI support, and CLI tooling",
   "bin": {
     "sumi": "dist/bin/sumi-cli.js"
@@ -33,14 +33,19 @@
       "import": "./dist/lib/testing.js",
       "types": "./dist/lib/testing.d.ts"
     },
-    "./types":  { 
-      "import": "./dist/types/index.js", 
-      "types": "./dist/types/index.d.ts" }
+    "./types": {
+      "import": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
+    }
   },
   "typesVersions": {
     "*": {
-      "types": ["dist/types/index.d.ts"],
-      "types/*": ["dist/types/*"]
+      "types": [
+        "dist/types/index.d.ts"
+      ],
+      "types/*": [
+        "dist/types/*"
+      ]
     }
   },
   "files": [

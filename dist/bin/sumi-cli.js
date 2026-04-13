@@ -4,6 +4,7 @@ import prompts from 'prompts';
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import chokidar from 'chokidar';
 import { Sumi } from '../lib/sumi';
 const cli = cac('sumi');
 function createDirectory(dirPath) {
@@ -857,30 +858,49 @@ const sumi = new Sumi(config);
 await sumi.burn();
 `;
     fs.writeFileSync(serverPath, serverContent);
+    const { spawn } = require('child_process');
+    const bunArgs = ['run', '--watch', './.sumi/server.ts', '--hot'];
+    const bunEnv = { ...process.env, NODE_ENV: 'development' };
+    // Watch .env* files and restart bun when they change
+    const envWatcher = chokidar.watch('.env*', {
+        cwd: process.cwd(),
+        ignoreInitial: true,
+        depth: 0,
+    });
     const cleanup = () => {
+        envWatcher.close();
         if (fs.existsSync(sumiDir)) {
             fs.rmSync(sumiDir, { recursive: true, force: true });
         }
     };
-    // Set up cleanup on all exit scenarios
     process.on('SIGINT', cleanup);
     process.on('SIGTERM', cleanup);
     process.on('exit', cleanup);
-    const env = {
-        ...process.env,
-        NODE_ENV: 'development',
+    let isRestarting = false;
+    const spawnBun = () => {
+        const proc = spawn('bun', bunArgs, { stdio: 'inherit', cwd: process.cwd(), env: bunEnv });
+        proc.on('exit', (code) => {
+            if (!isRestarting) {
+                cleanup();
+                process.exit(code || 0);
+            }
+        });
+        return proc;
     };
-    const args = ['run', '--watch', './.sumi/server.ts', '--hot'];
-    const { spawn } = require('child_process');
-    const bunProcess = spawn('bun', args, {
-        stdio: 'inherit',
-        cwd: process.cwd(),
-        env,
-    });
-    bunProcess.on('exit', (code) => {
-        cleanup();
-        process.exit(code || 0);
-    });
+    let currentProcess = spawnBun();
+    const restartForEnv = (filePath) => {
+        if (isRestarting)
+            return;
+        isRestarting = true;
+        console.log(`\n  .env changed (${filePath}) — restarting\n`);
+        currentProcess.once('exit', () => {
+            currentProcess = spawnBun();
+            isRestarting = false;
+        });
+        currentProcess.kill('SIGTERM');
+    };
+    envWatcher.on('change', restartForEnv);
+    envWatcher.on('add', restartForEnv);
 });
 cli
     .command('start', 'Start the Sumi production server')

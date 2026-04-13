@@ -1,4 +1,3 @@
-import path from 'path';
 import { Sumi } from '../src/lib/sumi';
 import { defineConfig } from '../src/lib/sumi';
 
@@ -6,8 +5,8 @@ const PORT = 3001;
 
 const exampleConfig = defineConfig({
   logger: true,
-  routesDir: path.resolve(__dirname, 'routes'),
-  middlewareDir: path.resolve(__dirname, 'middleware'),
+  routesDir: 'example/routes',
+  middlewareDir: 'example/middleware',
   port: PORT,
   basePath: '/api/v1',
 });

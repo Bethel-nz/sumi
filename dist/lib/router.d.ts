@@ -31,9 +31,10 @@ export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: Context & {
     };
 }) => Response | Promise<Response>;
 export type OpenApiConfig = DescribeRouteOptions;
-export type SSEStreamHandler = (stream: SSEStreamingApi, c: import('hono').Context) => Promise<void>;
+export type SSEStreamHandler = (stream: SSEStreamingApi, c: Context) => Promise<void>;
 export interface SSERouteConfig {
     stream: SSEStreamHandler;
+    schema?: ValidationSchemaMap;
     middleware?: MiddlewareName[];
     openapi?: OpenApiConfig;
 }

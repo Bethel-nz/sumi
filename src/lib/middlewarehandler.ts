@@ -15,7 +15,7 @@ export class MiddlewareHandler {
     app: Hono,
     loggerEnabled: boolean,
     middlewareDir: string,
-    basePath: string
+    _basePath: string
   ) {
     this.app = app;
     this.loggerEnabled = loggerEnabled;
@@ -63,10 +63,8 @@ export class MiddlewareHandler {
           this.appliedMiddleware.get(filePath)!.add(pattern);
         }
       } catch (error) {
-        console.error(
-          `Error loading middleware: ${path.basename(filePath)}:`,
-          error
-        );
+        const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+        console.error(`[Sumi Router] Failed to load middleware ${path.basename(filePath)}\n  → ${msg}`);
       }
     }
   }
@@ -93,7 +91,8 @@ export class MiddlewareHandler {
                 this.app.use('*', handler);
               }
             } catch (error) {
-              console.error(`Error loading global middleware: ${file}:`, error);
+              const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+              console.error(`[Sumi Router] Failed to load global middleware ${file}\n  → ${msg}`);
             }
           }
         }

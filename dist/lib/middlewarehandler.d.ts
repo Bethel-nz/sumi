@@ -4,7 +4,7 @@ export declare class MiddlewareHandler {
     private loggerEnabled;
     private middlewareDir;
     private appliedMiddleware;
-    constructor(app: Hono, loggerEnabled: boolean, middlewareDir: string, basePath: string);
+    constructor(app: Hono, loggerEnabled: boolean, middlewareDir: string, _basePath: string);
     applyMiddleware(directory: string, routePath?: string): Promise<void>;
     applyGlobalMiddleware(): Promise<void>;
     reset(newApp: Hono): Promise<void>;

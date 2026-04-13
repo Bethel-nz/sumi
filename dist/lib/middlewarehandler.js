@@ -7,7 +7,7 @@ export class MiddlewareHandler {
     middlewareDir;
     // RESTORED: Safety check to prevent applying the same middleware twice to the same path
     appliedMiddleware = new Map();
-    constructor(app, loggerEnabled, middlewareDir, basePath) {
+    constructor(app, loggerEnabled, middlewareDir, _basePath) {
         this.app = app;
         this.loggerEnabled = loggerEnabled;
         this.middlewareDir = middlewareDir;
@@ -45,7 +45,8 @@ export class MiddlewareHandler {
                 }
             }
             catch (error) {
-                console.error(`Error loading middleware: ${path.basename(filePath)}:`, error);
+                const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+                console.error(`[Sumi Router] Failed to load middleware ${path.basename(filePath)}\n  → ${msg}`);
             }
         }
     }
@@ -69,7 +70,8 @@ export class MiddlewareHandler {
                             }
                         }
                         catch (error) {
-                            console.error(`Error loading global middleware: ${file}:`, error);
+                            const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+                            console.error(`[Sumi Router] Failed to load global middleware ${file}\n  → ${msg}`);
                         }
                     }
                 }

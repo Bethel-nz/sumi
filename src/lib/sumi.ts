@@ -30,7 +30,6 @@ import {
   RouteDefinition,
   RouteConfig,
   MiddlewareHandler as MiddlewareHandlerFunction,
-  ValidationContext,
   WebSocketDefinition,
 } from './router';
 import {
@@ -178,12 +177,6 @@ export class Sumi {
       this.app_base_path!
     );
 
-    this.staticConfig.forEach((config) => {
-      if (config.path && config.root) {
-        this.app.use(config.path, serveStatic({ root: config.root }));
-      }
-    });
-
     // Validate environment variables if config provided
     if (default_args.env) {
       this.validatedEnv = this.validateEnvironment(default_args.env);
@@ -323,20 +316,6 @@ export {};
 
     if (!fs.existsSync(directory)) {
       return;
-    }
-
-    if (directory === this.default_dir && !fs.existsSync(this.default_dir)) {
-      console.log(`Creating routes directory: ${this.default_dir}`);
-      fs.mkdirSync(this.default_dir, { recursive: true });
-    }
-    if (
-      directory === this.default_dir &&
-      !fs.existsSync(this.default_middleware_dir)
-    ) {
-      console.log(
-        `Creating middleware directory: ${this.default_middleware_dir}`
-      );
-      fs.mkdirSync(this.default_middleware_dir, { recursive: true });
     }
 
     const files = fs.readdirSync(directory);
@@ -565,6 +544,14 @@ export {};
             const middleware = await this.resolveMiddleware(middlewareName);
             if (middleware) {
               middlewareChain.push(middleware);
+            }
+          }
+        }
+
+        if ((methodConfig as any).schema) {
+          for (const [target, schema] of Object.entries((methodConfig as any).schema)) {
+            if (schema && typeof schema === 'object' && '_def' in schema) {
+              middlewareChain.push(zValidator(target as any, schema as any));
             }
           }
         }
@@ -807,6 +794,8 @@ usage: curl -X GET ${baseUrl}`;
         const appFetch = this.fetch()
 
         // Start server if port is provided
+        console.log(this.generateServerInfo());
+
         if (serverPort) {
           this.server = Bun.serve({
             port: serverPort,
@@ -850,9 +839,6 @@ usage: curl -X GET ${baseUrl}`;
         this.setupOpenAPIEndpoints();
         this.setupHealthCheck();
       }
-
-      // Log server info
-      console.log(this.generateServerInfo());
     } catch (error) {
       console.error('Error during burn():', error);
       throw error;

@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import { z, ZodObject, ZodSchema } from 'zod';
-import { SumiContext, ValidationTarget } from './types';
+import { ValidationTarget } from './types';
 import { DescribeRouteOptions } from 'hono-openapi';
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { WSContext } from 'hono/ws';
@@ -47,10 +47,11 @@ export type TypedRouteHandler<T extends ValidationSchemaMap> = (
 
 export type OpenApiConfig = DescribeRouteOptions;
 
-export type SSEStreamHandler = (stream: SSEStreamingApi, c: import('hono').Context) => Promise<void>;
+export type SSEStreamHandler = (stream: SSEStreamingApi, c: Context) => Promise<void>;
 
 export interface SSERouteConfig {
   stream: SSEStreamHandler;
+  schema?: ValidationSchemaMap;
   middleware?: MiddlewareName[];
   openapi?: OpenApiConfig;
 }

@@ -2,6 +2,8 @@ import { Context, Next } from 'hono';
 import { z, ZodObject, ZodSchema } from 'zod';
 import { SumiContext, ValidationTarget } from './types';
 import { DescribeRouteOptions } from 'hono-openapi';
+import type { SSEStreamingApi } from 'hono/streaming';
+import type { WSContext } from 'hono/ws';
 export interface ValidationSchemaMap {
     json?: ZodSchema;
     form?: ZodSchema;
@@ -27,6 +29,23 @@ export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: SumiContext &
     };
 }) => Response | Promise<Response>;
 export type OpenApiConfig = DescribeRouteOptions;
+export type SSEStreamHandler = (stream: SSEStreamingApi) => Promise<void>;
+export interface SSERouteConfig {
+    stream: SSEStreamHandler;
+    middleware?: string[];
+    openapi?: OpenApiConfig;
+}
+export interface WSHandler {
+    onOpen?: (evt: Event, ws: WSContext<unknown>) => void | Promise<void>;
+    onMessage?: (evt: MessageEvent<any>, ws: WSContext<unknown>) => void | Promise<void>;
+    onClose?: (evt: CloseEvent, ws: WSContext<unknown>) => void | Promise<void>;
+    onError?: (evt: Event, ws: WSContext<unknown>) => void | Promise<void>;
+}
+export interface WebSocketDefinition {
+    /** Factory called per-connection to return the WebSocket event handlers. */
+    handler: (c: Context) => WSHandler;
+    middleware?: string[];
+}
 export interface RouteConfig<T extends ValidationSchemaMap> {
     schema?: T;
     handler: TypedRouteHandler<T>;
@@ -34,7 +53,7 @@ export interface RouteConfig<T extends ValidationSchemaMap> {
     middleware?: string[];
 }
 export interface RouteDefinition {
-    get?: RouteConfig<any> | RouteHandler;
+    get?: RouteConfig<any> | RouteHandler | SSERouteConfig;
     post?: RouteConfig<any> | RouteHandler;
     put?: RouteConfig<any> | RouteHandler;
     delete?: RouteConfig<any> | RouteHandler;
@@ -53,3 +72,7 @@ export declare function createRoute<T extends RouteDefinition>(config: T): T;
 export declare function createMiddleware(config: {
     _: any;
 }): any;
+/**
+ * A helper function for defining WebSockets in +ws.ts files.
+ */
+export declare function createWS(config: WebSocketDefinition): WebSocketDefinition;

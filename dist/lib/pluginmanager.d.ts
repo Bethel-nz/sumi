@@ -7,4 +7,5 @@ export declare class PluginManager {
     set<T>(key: string, value: T): void;
     use<T>(key: string): T;
     register(handler: (c: SumiContext, next: Next) => Promise<void | Response>): void;
+    reset(newApp: Hono): void;
 }

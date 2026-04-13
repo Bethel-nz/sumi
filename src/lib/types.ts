@@ -2,6 +2,9 @@ import { Context, HonoRequest } from 'hono';
 import { z, ZodSchema, ZodObject } from 'zod';
 import { ApiReferenceConfiguration } from '@scalar/hono-api-reference';
 import { OpenApiSpecsOptions, generateSpecs } from 'hono-openapi';
+import type { Options as RateLimiterOptions } from 'hono-rate-limiter';
+
+type CorsOptions = any;
 
 // Validation target types
 export type ValidationTarget =
@@ -75,11 +78,27 @@ export type SumiConfig = {
   docs?: DocsConfig;
   hooks?: SumiHooks;
   env?: EnvConfig<any>;
+  /** CORS options forwarded to hono/cors. Set to `true` for permissive defaults. */
+  cors?: CorsOptions | true;
+  /** Attach a unique x-request-id header to every request. */
+  requestId?: boolean;
+  /**
+   * Auto-mount a health check endpoint.
+   * Defaults to path '/healthz'. Override with `{ path: '/health' }`.
+   */
+  healthCheck?: boolean | { path?: string; metadata?: Record<string, unknown> };
+  /** Global rate limiting via hono-rate-limiter. */
+  rateLimit?: {
+    windowMs: number;
+    limit: number;
+    keyGenerator?: (c: import('hono').Context) => string;
+  };
 };
 
 // SumiContext extending Hono's Context
 export interface SumiContext extends Context {
-  env: any; // Will hold validated environment variables
+  env: any; // Will hold validated environment variables (when safe)
+  validatedEnv: any; // Always holds validated environment variables
 }
 
 // Generic type for the c.req.valid(...) function

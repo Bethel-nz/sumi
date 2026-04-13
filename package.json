@@ -1,6 +1,6 @@
 {
   "name": "@bethel-nz/sumi",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "description": "A blazing fast web framework built on Hono with file-based routing, OpenAPI support, and CLI tooling",
   "bin": {
     "sumi": "dist/bin/sumi-cli.js"
@@ -8,7 +8,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "build:js": "bun build src/bin/sumi-cli.ts --outfile=dist/bin/sumi-cli.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference && bun build src/index.ts --outfile=dist/index.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference",
+    "build:js": "bun build src/bin/sumi-cli.ts --outfile=dist/bin/sumi-cli.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference && bun build src/index.ts --outfile=dist/index.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference && bun build src/lib/worker.ts --outfile=dist/lib/worker.js --format=esm --target=bun --external hono --external zod --external @hono/zod-validator --external hono-openapi --external @scalar/hono-api-reference",
     "build:dts": "tsc",
     "build:assets": "bun ./scripts/copy-assets.mjs",
     "build": "bun run build:js && bun run build:dts && bun run build:assets",
@@ -28,6 +28,10 @@
       "import": "./dist/lib/router.js",
       "types": "./dist/lib/router.d.ts"
     },
+    "./worker": {
+      "import": "./dist/lib/worker.js",
+      "types": "./dist/lib/worker.d.ts"
+    },
     "./testing": {
       "require": "./dist/lib/testing.js",
       "import": "./dist/lib/testing.js",
@@ -42,6 +46,9 @@
     "*": {
       "types": [
         "dist/types/index.d.ts"
+      ],
+      "worker": [
+        "dist/lib/worker.d.ts"
       ],
       "types/*": [
         "dist/types/*"
@@ -75,26 +82,26 @@
     "url": "https://github.com/bethel-nz/sumi/issues"
   },
   "dependencies": {
-    "@hono/standard-validator": "^0.1.4",
-    "@hono/zod-validator": "^0.7.2",
-    "@scalar/hono-api-reference": "^0.9.13",
+    "@hono/standard-validator": "^0.1.5",
+    "@hono/zod-validator": "^0.7.6",
+    "@scalar/hono-api-reference": "^0.9.48",
     "@types/prompts": "^2.4.9",
     "cac": "^6.7.14",
-    "chokidar": "^4.0.1",
-    "hono": "^4.6.10",
+    "chokidar": "^4.0.3",
+    "hono": "^4.12.12",
     "hono-openapi": "^0.4.8",
     "lodash.debounce": "^4.0.8",
-    "pino": "^9.5.0",
+    "pino": "^9.14.0",
     "prompts": "^2.4.2",
-    "zod": "^4.0.0",
-    "zod-openapi": "^5.3.0",
+    "zod": "^4.3.6",
+    "zod-openapi": "^5.4.6",
     "zodest": "^0.3.2"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/lodash.debounce": "^4.0.9",
-    "tsx": "^4.19.2",
-    "typescript": "^5.8.3"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   },
   "engines": {
     "bun": ">=1.0.0"

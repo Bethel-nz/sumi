@@ -26,4 +26,17 @@ export class PluginManager {
     register(handler) {
         this.app.use('*', handler);
     }
+    reset(newApp) {
+        this.app = newApp;
+        // Re-register the plugin context middleware on the fresh app
+        this.app.use('*', async (c, next) => {
+            if (!c.plugin) {
+                c.plugin = {
+                    set: (key, value) => this.set(key, value),
+                    use: (key) => this.use(key),
+                };
+            }
+            await next();
+        });
+    }
 }

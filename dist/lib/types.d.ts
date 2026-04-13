@@ -2,6 +2,7 @@ import { Context, HonoRequest } from 'hono';
 import { z, ZodSchema, ZodObject } from 'zod';
 import { ApiReferenceConfiguration } from '@scalar/hono-api-reference';
 import { OpenApiSpecsOptions } from 'hono-openapi';
+type CorsOptions = any;
 export type ValidationTarget = 'json' | 'form' | 'query' | 'param' | 'header' | 'cookie';
 export type StaticRouteConfig = {
     path: string;
@@ -44,9 +45,28 @@ export type SumiConfig = {
     docs?: DocsConfig;
     hooks?: SumiHooks;
     env?: EnvConfig<any>;
+    /** CORS options forwarded to hono/cors. Set to `true` for permissive defaults. */
+    cors?: CorsOptions | true;
+    /** Attach a unique x-request-id header to every request. */
+    requestId?: boolean;
+    /**
+     * Auto-mount a health check endpoint.
+     * Defaults to path '/healthz'. Override with `{ path: '/health' }`.
+     */
+    healthCheck?: boolean | {
+        path?: string;
+        metadata?: Record<string, unknown>;
+    };
+    /** Global rate limiting via hono-rate-limiter. */
+    rateLimit?: {
+        windowMs: number;
+        limit: number;
+        keyGenerator?: (c: import('hono').Context) => string;
+    };
 };
 export interface SumiContext extends Context {
     env: any;
+    validatedEnv: any;
 }
 export type TypedValid<T extends Record<string, ZodSchema | ZodObject<{}>>> = {
     <K extends keyof T & ValidationTarget>(target: K): z.infer<T[K]>;
@@ -54,3 +74,4 @@ export type TypedValid<T extends Record<string, ZodSchema | ZodObject<{}>>> = {
 export type TypedRequest<T extends Record<string, ZodSchema | ZodObject<{}>>> = {
     valid: TypedValid<T>;
 } & HonoRequest;
+export {};

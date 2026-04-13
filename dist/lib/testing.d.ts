@@ -16,7 +16,7 @@ export declare function createTestApp(options?: TestAppOptions): Promise<{
     /**
      * Access the underlying Sumi instance
      */
-    app: Sumi;
+    sumi: Sumi;
     /**
      * Access the Hono app directly
      */
@@ -27,10 +27,11 @@ export declare function createTestApp(options?: TestAppOptions): Promise<{
     cleanup: () => void;
 }>;
 /**
- * Creates a minimal test app with custom config
+ * Creates a minimal test app with custom config.
+ * Automatically calls burn() so routes and middleware are ready immediately.
  */
-export declare function createMockApp(config?: Partial<SumiConfig>): {
+export declare function createMockApp(config?: Partial<SumiConfig>): Promise<{
     request: (path: string, init?: RequestInit) => Response | Promise<Response>;
-    app: Sumi;
+    sumi: Sumi;
     hono: import("hono").Hono<import("hono/types").BlankEnv, import("hono/types").BlankSchema, "/">;
-};
+}>;

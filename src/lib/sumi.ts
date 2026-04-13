@@ -3,6 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import { Hono, Next, Context as HonoContext } from 'hono';
 import { serveStatic } from 'hono/bun';
+import { streamSSE } from 'hono/streaming';
+import { createBunWebSocket } from 'hono/bun';
+import { cors } from 'hono/cors';
+import { requestId } from 'hono/request-id';
+import { rateLimiter } from 'hono-rate-limiter';
+import { PluginManager } from './pluginmanager';
 
 // NEW OpenAPI imports
 import {
@@ -26,6 +32,7 @@ import {
   RouteConfig,
   MiddlewareHandler as MiddlewareHandlerFunction,
   ValidationContext,
+  WebSocketDefinition,
 } from './router';
 import {
   StaticRouteConfig,
@@ -54,6 +61,12 @@ export class Sumi {
   private hooks: SumiHooks;
   private validatedEnv: any = {};
   private openApiSetup: boolean = false;
+  private bunWS = createBunWebSocket();
+  private corsConfig: SumiConfig['cors'];
+  private requestIdEnabled: boolean;
+  private healthCheckConfig: SumiConfig['healthCheck'];
+  private rateLimitConfig: SumiConfig['rateLimit'];
+  public readonly plugins: PluginManager;
 
 
   private normalizeBasePath(p?: string): string{
@@ -82,6 +95,52 @@ export class Sumi {
     return combined || '/';
   }
 
+  private applyBaseMiddleware(): void {
+    // CORS
+    if (this.corsConfig) {
+      const corsOptions = this.corsConfig === true ? {} : this.corsConfig;
+      this.app.use('*', cors(corsOptions));
+    }
+
+    // Request ID
+    if (this.requestIdEnabled) {
+      this.app.use('*', requestId());
+    }
+
+    // Rate limiting
+    if (this.rateLimitConfig) {
+      this.app.use(
+        '*',
+        rateLimiter({
+          windowMs: this.rateLimitConfig.windowMs,
+          limit: this.rateLimitConfig.limit,
+          keyGenerator:
+            this.rateLimitConfig.keyGenerator ??
+            ((c) =>
+              c.req.header('x-forwarded-for') ??
+              c.req.header('cf-connecting-ip') ??
+              'unknown'),
+        })
+      );
+    }
+  }
+
+  private setupHealthCheck(): void {
+    if (!this.healthCheckConfig) return;
+
+    const cfg = this.healthCheckConfig === true ? {} : this.healthCheckConfig;
+    const checkPath = cfg.path ?? '/healthz';
+
+    this.app.get(checkPath, (c) => {
+      return c.json({
+        status: 'ok',
+        uptime: process.uptime(),
+        routes: this.uniqueRoutes.size,
+        ...(cfg.metadata ? { metadata: cfg.metadata } : {}),
+      });
+    });
+  }
+
 
   constructor(default_args: SumiConfig) {
     this.app = default_args.app || new Hono();
@@ -89,6 +148,13 @@ export class Sumi {
     this.openapiConfig = default_args.openapi;
     this.docsConfig = default_args.docs;
     this.hooks = default_args.hooks || {};
+
+    this.plugins = new PluginManager(this.app);
+
+    this.corsConfig = default_args.cors;
+    this.requestIdEnabled = default_args.requestId ?? false;
+    this.healthCheckConfig = default_args.healthCheck;
+    this.rateLimitConfig = default_args.rateLimit;
 
     this.app_base_path = this.normalizeBasePath(default_args.basePath);
     if (this.app_base_path) {
@@ -125,8 +191,8 @@ export class Sumi {
 
     // Add env middleware to make validated env available in context
     this.app.use('*', async (c, next) => {
-      // Use c.var to store custom variables
-      c.env = this.validatedEnv;
+      // Always provide via validatedEnv
+      (c as any).validatedEnv = this.validatedEnv;
       await next();
     });
 
@@ -219,7 +285,7 @@ export {};
     const routeName = path.basename(filePath, path.extname(filePath));
     if (routeName.startsWith('_')) return '';
 
-    const isIndexFile = routeName === 'index';
+    const isIndexFile = routeName === 'index' || routeName === '+ws';
     const relativePath = path.relative(this.default_dir, filePath);
     const dirPath = path.dirname(relativePath);
 
@@ -320,7 +386,76 @@ export {};
       return;
     }
 
+    if (baseName.startsWith('+ws')) {
+      await this.processWebSocketFile(filePath);
+      return;
+    }
+
     await this.processRouteFile(filePath);
+  }
+
+  private async processWebSocketFile(filePath: string): Promise<void> {
+    let wsModule;
+    const relativeFilePath = path.relative(process.cwd(), filePath);
+    try {
+      wsModule = await import(`${filePath}?v=${Date.now()}`);
+      if (!wsModule.default) {
+        console.warn(
+          `[Sumi Router] No default export in WebSocket file: ${relativeFilePath}.`
+        );
+        return;
+      }
+    } catch (error) {
+      console.error(
+        `[Sumi Router] Error loading WebSocket file ${relativeFilePath}:`,
+        error
+      );
+      return;
+    }
+
+    const wsDefinition: WebSocketDefinition = wsModule.default;
+    const route_path = this.convertToHonoRoute(filePath);
+    if (!route_path) return;
+
+    // Apply directory-based middleware only once per directory
+    const currentFileDir = path.dirname(filePath);
+    if (!this.processedPaths.has(currentFileDir)) {
+      await this.middlewareHandler.applyMiddleware(currentFileDir, route_path);
+      this.processedPaths.add(currentFileDir);
+    }
+
+    const routeKey = `WS:${route_path}`;
+    if (this.uniqueRoutes.has(routeKey)) {
+      console.warn(
+        `[Sumi Router] Duplicate WebSocket route detected: ${routeKey}, skipping...`
+      );
+      return;
+    }
+    this.uniqueRoutes.add(routeKey);
+
+    const middlewareChain: any[] = [];
+
+    // Add Route-Specific Middleware
+    if (wsDefinition.middleware && Array.isArray(wsDefinition.middleware)) {
+      for (const middlewareName of wsDefinition.middleware) {
+        const middleware = await this.resolveMiddleware(middlewareName);
+        if (middleware) {
+          middlewareChain.push(middleware);
+        }
+      }
+    }
+
+    const userHandler = this.bunWS.upgradeWebSocket((c: any) =>
+      wsDefinition.handler(c)
+    );
+    middlewareChain.push(userHandler);
+
+    // Register as GET
+    this.applyRouteMethod('GET', route_path, ...middlewareChain);
+
+    if (this.hooks.onRouteRegistered) {
+      this.hooks.onRouteRegistered('WS', route_path);
+    }
   }
 
   private async resolveMiddleware(middlewareName: string): Promise<any> {
@@ -419,6 +554,31 @@ export {};
 
       if (typeof methodConfig === 'function') {
         userHandler = methodConfig;
+      } else if (
+        typeof methodConfig === 'object' &&
+        'stream' in methodConfig &&
+        typeof (methodConfig as any).stream === 'function'
+      ) {
+        // SSE route — wrap the user's stream callback with Hono's streamSSE
+        const sseCallback = (methodConfig as any).stream;
+
+        if ((methodConfig as any).openapi) {
+          middlewareChain.push(describeRoute((methodConfig as any).openapi));
+        }
+
+        if (
+          (methodConfig as any).middleware &&
+          Array.isArray((methodConfig as any).middleware)
+        ) {
+          for (const middlewareName of (methodConfig as any).middleware) {
+            const middleware = await this.resolveMiddleware(middlewareName);
+            if (middleware) {
+              middlewareChain.push(middleware);
+            }
+          }
+        }
+
+        userHandler = (c: HonoContext) => streamSSE(c, sseCallback);
       } else if (typeof methodConfig === 'object' && methodConfig.handler) {
         userHandler = methodConfig.handler;
 
@@ -494,6 +654,7 @@ export {};
 
     // Reset middleware handler with the new app instance
     this.middlewareHandler.reset(this.app);
+    this.plugins.reset(this.app);
 
     // Re-apply static routes
     this.staticConfig.forEach((config) => {
@@ -504,7 +665,10 @@ export {};
 
     // Re-apply environment middleware
     this.app.use('*', async (c, next) => {
-      (c as any).env = this.validatedEnv;
+      (c as any).validatedEnv = this.validatedEnv;
+      if (!c.env || typeof (c.env as any).upgrade !== 'function') {
+        (c as any).env = this.validatedEnv;
+      }
       await next();
     });
 
@@ -543,6 +707,9 @@ export {};
     this.processedPaths.clear();
     this.uniqueRoutes.clear();
     this.openApiSetup = false; // Reset OpenAPI setup flag
+
+    this.applyBaseMiddleware();
+    this.setupHealthCheck();
   }
 
   private generateServerInfo(): string {
@@ -654,7 +821,8 @@ usage: curl -X GET ${baseUrl}`;
           this.server = Bun.serve({
             port: serverPort,
             development: true,
-            fetch: async (req) => {
+            websocket: this.bunWS.websocket,
+            fetch: async (req, server) => {
               const url = new URL(req.url)
               const cache = process.env.NODE_ENV === 'development' ? 'no-store' : 'public, max-age=86400'
               const base = this.app_base_path ?? '';
@@ -678,7 +846,7 @@ usage: curl -X GET ${baseUrl}`;
                 }
                 return new Response('Not found', { status: 404 });
               }
-              return appFetch(req);
+              return this.app.fetch(req, server);
             },
           });
         }

@@ -921,29 +921,66 @@ cli
     }
 });
 cli
-    .command('build', 'Build the Sumi application for production')
-    .option('-c, --config <config>', 'Config file path', {
+    .command('build', 'Build the Sumi app for deployment')
+    .option('--target <target>', 'Deployment target: cloudflare', {
+    default: 'cloudflare',
+})
+    .option('--routes-dir <dir>', 'Routes directory', { default: 'routes' })
+    .option('--middleware-dir <dir>', 'Middleware directory', { default: 'middleware' })
+    .option('--config <path>', 'Path to sumi.config.ts', {
     default: 'sumi.config.ts',
 })
+    .option('--out-dir <dir>', 'Output directory', { default: 'dist' })
     .action(async (options) => {
+    // Run onBuild hook if config is loadable (non-CF targets also get this)
     const configPath = path.resolve(process.cwd(), options.config);
-    if (!fs.existsSync(configPath)) {
-        console.error('❌ Error: sumi.config.ts not found.');
-        process.exit(1);
-    }
-    try {
-        console.log('🏗️  Building Sumi application...');
-        const configModule = await import(`file://${configPath}?v=${Date.now()}`);
-        const config = configModule.default;
-        if (config.hooks?.onBuild) {
-            await config.hooks.onBuild();
+    if (fs.existsSync(configPath)) {
+        try {
+            const configModule = await import(`file://${configPath}?v=${Date.now()}`);
+            const appConfig = configModule.default;
+            if (appConfig.hooks?.onBuild)
+                await appConfig.hooks.onBuild();
         }
-        console.log('✅ Build complete!');
+        catch {
+            // ignore — config may not be loadable in all contexts
+        }
     }
-    catch (error) {
-        console.error('❌ Build failed:', error);
+    if (options.target !== 'cloudflare') {
+        console.error(`[sumi build] Unknown target: "${options.target}". Only "cloudflare" is supported.`);
         process.exit(1);
     }
+    console.log('[sumi build] Generating Cloudflare Worker entry...');
+    const { generateWorkerEntry } = await import('../lib/worker-codegen');
+    const outEntryFile = path.join(options.outDir, 'worker-entry.ts');
+    const workerOutFile = path.join(options.outDir, 'worker.js');
+    const source = await generateWorkerEntry({
+        routesDir: options.routesDir,
+        middlewareDir: options.middlewareDir,
+        configPath: options.config,
+        outFile: outEntryFile,
+    });
+    fs.mkdirSync(options.outDir, { recursive: true });
+    fs.writeFileSync(outEntryFile, source, 'utf8');
+    console.log(`[sumi build] Written: ${outEntryFile}`);
+    // Bundle with Bun
+    console.log(`[sumi build] Bundling with Bun → ${workerOutFile}`);
+    const result = await Bun.build({
+        entrypoints: [path.resolve(outEntryFile)],
+        outdir: options.outDir,
+        target: 'browser', // CF workers use browser-compatible APIs
+        format: 'esm',
+        minify: false,
+        naming: 'worker.js',
+        external: [], // bundle everything
+    });
+    if (!result.success) {
+        console.error('[sumi build] Bundle failed:');
+        for (const log of result.logs)
+            console.error(' ', log);
+        process.exit(1);
+    }
+    console.log(`[sumi build] ✅ Worker bundle ready: ${workerOutFile}`);
+    console.log('[sumi build] Deploy with: wrangler deploy');
 });
 cli
     .command('generate <type> <name>', 'Generate route files or middleware')

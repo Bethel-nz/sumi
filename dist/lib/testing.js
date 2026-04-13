@@ -34,7 +34,7 @@ export async function createTestApp(options = {}) {
             /**
              * Access the underlying Sumi instance
              */
-            app: sumi,
+            sumi,
             /**
              * Access the Hono app directly
              */
@@ -55,24 +55,26 @@ export async function createTestApp(options = {}) {
     }
 }
 /**
- * Creates a minimal test app with custom config
+ * Creates a minimal test app with custom config.
+ * Automatically calls burn() so routes and middleware are ready immediately.
  */
-export function createMockApp(config = {}) {
+export async function createMockApp(config = {}) {
     const mockConfig = {
         logger: false,
-        port: 3000,
+        port: 0,
         routesDir: 'test/fixtures/routes',
         middlewareDir: 'test/fixtures/middleware',
         ...config,
     };
     const sumi = new Sumi(mockConfig);
+    await sumi.burn();
     return {
         request: (path, init) => {
             const url = `http://localhost${mockConfig.basePath || ''}${path}`;
             const request = new Request(url, init);
             return sumi.fetch()(request);
         },
-        app: sumi,
+        sumi,
         hono: sumi.app,
     };
 }

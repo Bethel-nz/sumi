@@ -12,3 +12,9 @@ export function createRoute(config) {
 export function createMiddleware(config) {
     return createRoute(config);
 }
+/**
+ * A helper function for defining WebSockets in +ws.ts files.
+ */
+export function createWS(config) {
+    return config;
+}

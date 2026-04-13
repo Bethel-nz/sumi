@@ -37,4 +37,18 @@ export class PluginManager {
       handler as (c: Context, next: Next) => Promise<void | Response>
     );
   }
+
+  reset(newApp: Hono): void {
+    this.app = newApp;
+    // Re-register the plugin context middleware on the fresh app
+    this.app.use('*', async (c: Context, next: Next) => {
+      if (!c.plugin) {
+        c.plugin = {
+          set: <T>(key: string, value: T): void => this.set(key, value),
+          use: <T>(key: string): T => this.use<T>(key),
+        };
+      }
+      await next();
+    });
+  }
 }

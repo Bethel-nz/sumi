@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { PluginManager } from './pluginmanager';
 import { SumiConfig } from './types';
 export declare class Sumi {
     app: Hono;
@@ -17,15 +18,24 @@ export declare class Sumi {
     private hooks;
     private validatedEnv;
     private openApiSetup;
+    private bunWS;
+    private corsConfig;
+    private requestIdEnabled;
+    private healthCheckConfig;
+    private rateLimitConfig;
+    readonly plugins: PluginManager;
     private normalizeBasePath;
     private joinBase;
     private joinPath;
+    private applyBaseMiddleware;
+    private setupHealthCheck;
     constructor(default_args: SumiConfig);
     private generateMiddlewareTypes;
     private is_valid_file;
     private convertToHonoRoute;
     private build_routes;
     private handleFile;
+    private processWebSocketFile;
     private resolveMiddleware;
     private processRouteFile;
     private applyRouteMethod;

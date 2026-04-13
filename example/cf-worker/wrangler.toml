@@ -1,0 +1,12 @@
+# example/cf-worker/wrangler.toml
+# Cloudflare Workers deployment config for a Sumi app.
+# 1. Run: sumi build --target cloudflare
+# 2. Run: wrangler deploy
+
+name = "sumi-worker"
+main = "../../dist/worker.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[build]
+command = "bun run build && sumi build --target cloudflare"

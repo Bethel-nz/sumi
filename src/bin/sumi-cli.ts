@@ -900,6 +900,9 @@ cli
       process.exit(1);
     }
 
+    // Ensure tsconfig.json exists and has Bun types
+    ensureBunTypes(path.join(process.cwd(), 'tsconfig.json'));
+
     // Create the .sumi directory
     const sumiDir = path.join(process.cwd(), '.sumi');
     const serverPath = path.join(sumiDir, 'server.ts');
@@ -1318,7 +1321,15 @@ async function initProject(basePath: string, force = false) {
     console.log(`📄 Created .gitignore`);
   }
 
-  const tsconfigPath = path.join(basePath, 'tsconfig.json');
+  ensureBunTypes(path.join(basePath, 'tsconfig.json'));
+}
+
+/**
+ * Ensures tsconfig.json exists and includes `types: ['bun']`.
+ * Creates a minimal config if the file is absent.
+ * Patches the existing file if bun is missing from compilerOptions.types.
+ */
+function ensureBunTypes(tsconfigPath: string): void {
   if (!fs.existsSync(tsconfigPath)) {
     fs.writeFileSync(tsconfigPath, JSON.stringify({
       compilerOptions: {
@@ -1332,7 +1343,20 @@ async function initProject(basePath: string, force = false) {
       include: ['**/*.ts'],
       exclude: ['node_modules', 'dist'],
     }, null, 2));
-    console.log(`📄 Created tsconfig.json`);
+    return;
+  }
+
+  try {
+    const raw = fs.readFileSync(tsconfigPath, 'utf-8');
+    const config = JSON.parse(raw);
+    const types: string[] = config?.compilerOptions?.types ?? [];
+    if (!types.includes('bun')) {
+      config.compilerOptions ??= {};
+      config.compilerOptions.types = [...types, 'bun'];
+      fs.writeFileSync(tsconfigPath, JSON.stringify(config, null, 2));
+    }
+  } catch {
+    // JSONC or unreadable tsconfig — skip silently
   }
 }
 

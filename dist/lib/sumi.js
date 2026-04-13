@@ -420,7 +420,7 @@ export {};
                         }
                     }
                 }
-                userHandler = (c) => streamSSE(c, sseCallback);
+                userHandler = (c) => streamSSE(c, (stream) => sseCallback(stream, c));
             }
             else if (typeof methodConfig === 'object' && methodConfig.handler) {
                 userHandler = methodConfig.handler;

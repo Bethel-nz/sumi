@@ -41,7 +41,7 @@ export function createWorkerApp(manifest, config = {}) {
                 // SSE route — import streamSSE lazily to keep CF compat
                 // (hono/streaming is CF-compatible)
                 const sseCallback = methodConfig.stream;
-                userHandler = (c) => streamSSE(c, sseCallback);
+                userHandler = (c) => streamSSE(c, (stream) => sseCallback(stream, c));
             }
             else if (typeof methodConfig === 'object' &&
                 methodConfig.handler) {

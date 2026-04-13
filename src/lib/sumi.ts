@@ -569,7 +569,7 @@ export {};
           }
         }
 
-        userHandler = (c: HonoContext) => streamSSE(c, sseCallback);
+        userHandler = (c: HonoContext) => streamSSE(c, (stream) => sseCallback(stream, c));
       } else if (typeof methodConfig === 'object' && methodConfig.handler) {
         userHandler = methodConfig.handler;
 

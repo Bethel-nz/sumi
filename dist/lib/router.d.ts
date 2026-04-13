@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import { z, ZodObject, ZodSchema } from 'zod';
-import { SumiContext, ValidationTarget } from './types';
+import { ValidationTarget } from './types';
 import { DescribeRouteOptions } from 'hono-openapi';
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { WSContext } from 'hono/ws';
@@ -16,15 +16,17 @@ export interface ValidationSchemaMap {
 export type ValidatedData<T extends ValidationSchemaMap> = {
     [K in keyof T]?: T[K] extends ZodSchema ? z.infer<T[K]> : unknown;
 };
-export type ValidationContext<T extends Record<string, ZodSchema | ZodObject<{}>>> = SumiContext & {
-    req: SumiContext['req'] & {
+export type ValidationContext<T extends Record<string, ZodSchema | ZodObject<{}>>> = Context & {
+    validatedEnv: any;
+    req: Context['req'] & {
         valid: <K extends keyof T & ValidationTarget>(target: K) => z.infer<T[K]>;
     };
 };
 export type RouteHandler = (c: Context) => Response | Promise<Response>;
 export type MiddlewareHandler = (c: Context, next: Next) => Promise<void | Response>;
-export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: SumiContext & {
-    req: SumiContext['req'] & {
+export type TypedRouteHandler<T extends ValidationSchemaMap> = (c: Context & {
+    validatedEnv: any;
+    req: Context['req'] & {
         valid: <K extends keyof T & ValidationTarget>(target: K) => T[K] extends ZodSchema ? z.infer<T[K]> : any;
     };
 }) => Response | Promise<Response>;

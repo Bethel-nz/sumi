@@ -21,8 +21,9 @@ export type ValidatedData<T extends ValidationSchemaMap> = {
 
 export type ValidationContext<
   T extends Record<string, ZodSchema | ZodObject<{}>>
-> = SumiContext & {
-  req: SumiContext['req'] & {
+> = Context & {
+  validatedEnv: any;
+  req: Context['req'] & {
     valid: <K extends keyof T & ValidationTarget>(target: K) => z.infer<T[K]>;
   };
 };
@@ -34,8 +35,9 @@ export type MiddlewareHandler = (
 ) => Promise<void | Response>;
 
 export type TypedRouteHandler<T extends ValidationSchemaMap> = (
-  c: SumiContext & {
-    req: SumiContext['req'] & {
+  c: Context & {
+    validatedEnv: any;
+    req: Context['req'] & {
       valid: <K extends keyof T & ValidationTarget>(
         target: K
       ) => T[K] extends ZodSchema ? z.infer<T[K]> : any;

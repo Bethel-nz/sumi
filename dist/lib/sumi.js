@@ -7,7 +7,6 @@ import { streamSSE } from 'hono/streaming';
 import { createBunWebSocket } from 'hono/bun';
 import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
-import { rateLimiter } from 'hono-rate-limiter';
 import { PluginManager } from './pluginmanager';
 // NEW OpenAPI imports
 import { generateSpecs, describeRoute, } from 'hono-openapi';
@@ -62,7 +61,7 @@ export class Sumi {
         const combined = `${left}${right}`;
         return combined || '/';
     }
-    applyBaseMiddleware() {
+    async applyBaseMiddleware() {
         // CORS
         if (this.corsConfig) {
             const corsOptions = this.corsConfig === true ? {} : this.corsConfig;
@@ -72,8 +71,9 @@ export class Sumi {
         if (this.requestIdEnabled) {
             this.app.use('*', requestId());
         }
-        // Rate limiting
+        // hono-rate-limiter is optional — only imported when rateLimit is configured
         if (this.rateLimitConfig) {
+            const { rateLimiter } = await import('hono-rate-limiter');
             this.app.use('*', rateLimiter({
                 windowMs: this.rateLimitConfig.windowMs,
                 limit: this.rateLimitConfig.limit,
@@ -525,9 +525,7 @@ export {};
         // Clear tracking sets
         this.processedPaths.clear();
         this.uniqueRoutes.clear();
-        this.openApiSetup = false; // Reset OpenAPI setup flag
-        this.applyBaseMiddleware();
-        this.setupHealthCheck();
+        this.openApiSetup = false;
     }
     generateServerInfo() {
         const baseUrl = `http://localhost:${this.config_port}` + (this.app_base_path || '');
@@ -597,9 +595,11 @@ usage: curl -X GET ${baseUrl}`;
                 await this.generateMiddlewareTypes();
                 // Clear and rebuild routes
                 this.clearRoutesAndMiddleware();
-                await this.middlewareHandler.applyGlobalMiddleware(); // Apply global middleware once here
+                await this.applyBaseMiddleware();
+                await this.middlewareHandler.applyGlobalMiddleware();
                 await this.build_routes();
                 this.setupOpenAPIEndpoints();
+                this.setupHealthCheck();
                 // Call onReady hook before starting server
                 if (this.hooks.onReady) {
                     await this.hooks.onReady();
@@ -645,9 +645,11 @@ usage: curl -X GET ${baseUrl}`;
                 // For test environment, just build routes without starting a server
                 await this.generateMiddlewareTypes();
                 this.clearRoutesAndMiddleware();
-                await this.middlewareHandler.applyGlobalMiddleware(); // Apply global middleware once here
+                await this.applyBaseMiddleware();
+                await this.middlewareHandler.applyGlobalMiddleware();
                 await this.build_routes();
                 this.setupOpenAPIEndpoints();
+                this.setupHealthCheck();
             }
             // Log server info
             console.log(this.generateServerInfo());

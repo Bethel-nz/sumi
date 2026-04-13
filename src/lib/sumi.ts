@@ -7,7 +7,6 @@ import { streamSSE } from 'hono/streaming';
 import { createBunWebSocket } from 'hono/bun';
 import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
-import { rateLimiter } from 'hono-rate-limiter';
 import { PluginManager } from './pluginmanager';
 
 // NEW OpenAPI imports
@@ -95,7 +94,7 @@ export class Sumi {
     return combined || '/';
   }
 
-  private applyBaseMiddleware(): void {
+  private async applyBaseMiddleware(): Promise<void> {
     // CORS
     if (this.corsConfig) {
       const corsOptions = this.corsConfig === true ? {} : this.corsConfig;
@@ -107,8 +106,9 @@ export class Sumi {
       this.app.use('*', requestId());
     }
 
-    // Rate limiting
+    // hono-rate-limiter is optional — only imported when rateLimit is configured
     if (this.rateLimitConfig) {
+      const { rateLimiter } = await import('hono-rate-limiter');
       this.app.use(
         '*',
         rateLimiter({
@@ -706,10 +706,7 @@ export {};
     // Clear tracking sets
     this.processedPaths.clear();
     this.uniqueRoutes.clear();
-    this.openApiSetup = false; // Reset OpenAPI setup flag
-
-    this.applyBaseMiddleware();
-    this.setupHealthCheck();
+    this.openApiSetup = false;
   }
 
   private generateServerInfo(): string {
@@ -799,9 +796,11 @@ usage: curl -X GET ${baseUrl}`;
 
         // Clear and rebuild routes
         this.clearRoutesAndMiddleware();
-        await this.middlewareHandler.applyGlobalMiddleware(); // Apply global middleware once here
+        await this.applyBaseMiddleware();
+        await this.middlewareHandler.applyGlobalMiddleware();
         await this.build_routes();
         this.setupOpenAPIEndpoints();
+        this.setupHealthCheck();
 
         // Call onReady hook before starting server
         if (this.hooks.onReady) {
@@ -854,9 +853,11 @@ usage: curl -X GET ${baseUrl}`;
         // For test environment, just build routes without starting a server
         await this.generateMiddlewareTypes();
         this.clearRoutesAndMiddleware();
-        await this.middlewareHandler.applyGlobalMiddleware(); // Apply global middleware once here
+        await this.applyBaseMiddleware();
+        await this.middlewareHandler.applyGlobalMiddleware();
         await this.build_routes();
         this.setupOpenAPIEndpoints();
+        this.setupHealthCheck();
       }
 
       // Log server info

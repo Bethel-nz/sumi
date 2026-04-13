@@ -62,7 +62,7 @@ function ensurePackageJson(projectPath: string) {
   const pkgPath = path.join(projectPath, 'package.json');
 
   const baseDeps = {
-    '@bethel-nz/sumi': '^1.0.0',
+    '@bethel-nz/sumi': 'latest',
     'hono': '^4.8.0',
     'zod': '^4.0.0',
     '@hono/zod-validator': '^0.7.0',
@@ -525,7 +525,7 @@ function generatePackageJsonContent(projectName: string): string {
         start: 'sumi start',
       },
       dependencies: {
-        '@bethel-nz/sumi': '^1.0.0',
+        '@bethel-nz/sumi': 'latest',
         hono: '^4.8.0',
         zod: '^4.0.0',
         '@hono/zod-validator': '^0.7.0',

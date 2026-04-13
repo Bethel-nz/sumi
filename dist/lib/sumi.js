@@ -291,7 +291,8 @@ export {};
             }
         }
         catch (error) {
-            console.error(`[Sumi Router] Error loading WebSocket file ${relativeFilePath}:`, error);
+            const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+            console.error(`[Sumi Router] Failed to load WebSocket file ${relativeFilePath}\n  → ${msg}`);
             return;
         }
         const wsDefinition = wsModule.default;
@@ -357,7 +358,8 @@ export {};
             }
         }
         catch (error) {
-            console.error(`[Sumi Router] Error loading middleware "${middlewareName}":`, error);
+            const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+            console.error(`[Sumi Router] Failed to load middleware "${middlewareName}"\n  → ${msg}`);
             return null;
         }
     }
@@ -372,7 +374,8 @@ export {};
             }
         }
         catch (error) {
-            console.error(`[Sumi Router] Error loading ${relativeFilePath}:`, error);
+            const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
+            console.error(`[Sumi Router] Failed to load ${relativeFilePath}\n  → ${msg}`);
             return;
         }
         const routeDefinition = routeModule.default;

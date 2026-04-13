@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import { z, ZodObject, ZodSchema } from 'zod';
-import { ValidationTarget } from './types';
+import { SumiContext, ValidationTarget } from './types';
 import { DescribeRouteOptions } from 'hono-openapi';
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { WSContext } from 'hono/ws';
@@ -97,11 +97,14 @@ export function createRoute<T extends RouteDefinition>(config: T): T {
 }
 
 /**
- * A helper function for defining middleware.
- * It's a convenient alias for createRoute, ensuring consistency.
+ * A helper function for defining middleware with typed context and next.
+ * The generic C lets callers annotate `c` as SumiContext (or any Context
+ * subtype) while still getting `next: Next` inferred automatically.
  */
-export function createMiddleware(config: { _: any }): any {
-  return createRoute(config);
+export function createMiddleware<C extends Context = SumiContext>(config: {
+  _: (c: C, next: Next) => Promise<void | Response>;
+}): typeof config {
+  return config;
 }
 
 /**

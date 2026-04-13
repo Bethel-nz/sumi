@@ -6,11 +6,12 @@ export function createRoute(config) {
     return config;
 }
 /**
- * A helper function for defining middleware.
- * It's a convenient alias for createRoute, ensuring consistency.
+ * A helper function for defining middleware with typed context and next.
+ * The generic C lets callers annotate `c` as SumiContext (or any Context
+ * subtype) while still getting `next: Next` inferred automatically.
  */
 export function createMiddleware(config) {
-    return createRoute(config);
+    return config;
 }
 /**
  * A helper function for defining WebSockets in +ws.ts files.

@@ -95,11 +95,13 @@ export type SumiConfig = {
   };
 };
 
-// SumiContext extending Hono's Context
-export interface SumiContext extends Context {
-  env: any; // Will hold validated environment variables (when safe)
-  validatedEnv: any; // Always holds validated environment variables
-}
+// SumiContext extending Hono's Context.
+// Defined as a type intersection (not interface extends) so TypeScript
+// reliably exposes req, res, json, etc. from the Context class.
+export type SumiContext = Context & {
+  env: any;
+  validatedEnv: any;
+};
 
 // Generic type for the c.req.valid(...) function
 export type TypedValid<T extends Record<string, ZodSchema | ZodObject<{}>>> = {

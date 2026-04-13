@@ -64,10 +64,10 @@ export type SumiConfig = {
         keyGenerator?: (c: import('hono').Context) => string;
     };
 };
-export interface SumiContext extends Context {
+export type SumiContext = Context & {
     env: any;
     validatedEnv: any;
-}
+};
 export type TypedValid<T extends Record<string, ZodSchema | ZodObject<{}>>> = {
     <K extends keyof T & ValidationTarget>(target: K): z.infer<T[K]>;
 };

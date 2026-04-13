@@ -56,10 +56,10 @@ export interface RouteConfig<T extends ValidationSchemaMap> {
 }
 export interface RouteDefinition {
     get?: RouteConfig<any> | RouteHandler | SSERouteConfig;
-    post?: RouteConfig<any> | RouteHandler;
-    put?: RouteConfig<any> | RouteHandler;
-    delete?: RouteConfig<any> | RouteHandler;
-    patch?: RouteConfig<any> | RouteHandler;
+    post?: RouteConfig<any> | RouteHandler | SSERouteConfig;
+    put?: RouteConfig<any> | RouteHandler | SSERouteConfig;
+    delete?: RouteConfig<any> | RouteHandler | SSERouteConfig;
+    patch?: RouteConfig<any> | RouteHandler | SSERouteConfig;
     _?: RouteConfig<any> | MiddlewareHandler;
 }
 /**

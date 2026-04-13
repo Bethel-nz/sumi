@@ -49,7 +49,7 @@ export type SSEStreamHandler = (stream: SSEStreamingApi) => Promise<void>;
 
 export interface SSERouteConfig {
   stream: SSEStreamHandler;
-  middleware?: string[];
+  middleware?: MiddlewareName[];
   openapi?: OpenApiConfig;
 }
 
@@ -66,14 +66,14 @@ export interface WSHandler {
 export interface WebSocketDefinition {
   /** Factory called per-connection to return the WebSocket event handlers. */
   handler: (c: Context) => WSHandler;
-  middleware?: string[];
+  middleware?: MiddlewareName[];
 }
 
 export interface RouteConfig<T extends ValidationSchemaMap> {
   schema?: T;
   handler: TypedRouteHandler<T>;
   openapi?: OpenApiConfig;
-  middleware?: string[];
+  middleware?: MiddlewareName[];
 }
 
 export interface RouteDefinition {

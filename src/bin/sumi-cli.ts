@@ -1317,6 +1317,23 @@ async function initProject(basePath: string, force = false) {
     fs.writeFileSync(gitignorePath, generateGitignoreContent());
     console.log(`📄 Created .gitignore`);
   }
+
+  const tsconfigPath = path.join(basePath, 'tsconfig.json');
+  if (!fs.existsSync(tsconfigPath)) {
+    fs.writeFileSync(tsconfigPath, JSON.stringify({
+      compilerOptions: {
+        target: 'ESNext',
+        module: 'ESNext',
+        moduleResolution: 'Bundler',
+        strict: true,
+        skipLibCheck: true,
+        types: ['bun'],
+      },
+      include: ['**/*.ts'],
+      exclude: ['node_modules', 'dist'],
+    }, null, 2));
+    console.log(`📄 Created tsconfig.json`);
+  }
 }
 
 function determineFilePattern(routePath: string): {

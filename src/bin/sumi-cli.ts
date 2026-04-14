@@ -1045,6 +1045,11 @@ cli
     default: 'sumi.config.ts',
   })
   .option('--out-dir <dir>', 'Output directory', { default: 'dist' })
+  .option(
+    '--external <packages>',
+    'Comma-separated packages to exclude from the bundle (e.g. native addons)',
+    { default: '' }
+  )
   .action(
     async (options: {
       target: string;
@@ -1052,6 +1057,7 @@ cli
       middlewareDir: string;
       config: string;
       outDir: string;
+      external: string;
     }) => {
       // Run onBuild hook if config is loadable (non-CF targets also get this)
       const configPath = path.resolve(process.cwd(), options.config);
@@ -1099,7 +1105,17 @@ cli
         format: 'esm',
         minify: false,
         naming: 'worker.js',
-        external: [], // bundle everything
+        // hono-rate-limiter is dynamically imported inside Sumi only when rateLimit
+        // is configured. CF Workers handle rate-limiting natively, so exclude it.
+        // Users can pass additional --external packages for native addons or other
+        // unbundleable deps (e.g. @memvid/sdk which ships a .node native binding).
+        external: [
+          'hono-rate-limiter',
+          ...options.external
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ],
       });
 
       if (!result.success) {

@@ -138,3 +138,34 @@ describe('createWorkerApp — HTTP methods', () => {
     expect(body.created).toBe(true);
   });
 });
+
+// ── static files ──────────────────────────────────────────
+describe('createWorkerApp — static files', () => {
+  it('registers static routes and returns 404 without ASSETS binding', async () => {
+    const manifest = makeManifest();
+    const { fetch } = createWorkerApp(manifest, {
+      static: [{ path: '/public/*', root: './public' }],
+    });
+    const res = await fetch(new Request('http://localhost/public/logo.png'));
+    expect(res.status).toBe(404);
+  });
+
+  it('forwards to env.ASSETS when the binding is present', async () => {
+    const manifest = makeManifest();
+    const { fetch } = createWorkerApp(manifest, {
+      static: [{ path: '/public/*', root: './public' }],
+    });
+
+    const mockAssets = {
+      fetch: async (req: Request) => new Response('asset-body', { status: 200 }),
+    };
+
+    const res = await fetch(
+      new Request('http://localhost/public/logo.png'),
+      { ASSETS: mockAssets }
+    );
+    expect(res.status).toBe(200);
+    const text = await res.text();
+    expect(text).toBe('asset-body');
+  });
+});

@@ -18,7 +18,7 @@ export interface WorkerManifest {
      */
     middleware?: Record<string, (c: any, next: any) => any>;
 }
-export type WorkerConfig = Pick<SumiConfig, 'basePath' | 'openapi' | 'docs' | 'hooks'>;
+export type WorkerConfig = Pick<SumiConfig, 'basePath' | 'openapi' | 'docs' | 'hooks' | 'static'>;
 /**
  * Creates a Hono app from a pre-built route manifest.
  * Safe to use in Cloudflare Workers — no filesystem access or dynamic imports.

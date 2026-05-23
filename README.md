@@ -1,6 +1,8 @@
 # Sumi
 
-Sumi is a file-based routing and configuration layer for [Hono](https://hono.dev), designed to streamline backend development on the Bun runtime. It integrates OpenAPI generation, Zod validation, and a command-line interface to provide a structured development experience.
+Sumi is a **Bun-first**, file-based routing and configuration layer for [Hono](https://hono.dev). It integrates OpenAPI generation, Zod validation, and a command-line interface to provide a structured development experience.
+
+**Runtime:** Bun is the primary and recommended runtime. Sumi leverages Bun-specific APIs (e.g., `Bun.serve`, `Bun.file`) for optimal performance. While some features may work on Node.js via build targets, Bun is the only officially supported runtime for development and production servers.
 
 Choose Sumi if you require Hono's performance but need a more structured, convention-over-configuration approach for your project.
 
@@ -284,7 +286,7 @@ sumi generate middleware rate-limiter
 
 ## Testing
 
-Sumi provides a test utility that loads your application instance for use in tests.
+Sumi provides test utilities that load your application instance for use in `bun:test`.
 
 ```typescript
 // tests/users.test.ts
@@ -329,6 +331,7 @@ export default createRoute({
 | Built-in Zod validation | ✅   | 🔧   | ❌      | 🔧      |
 | TypeScript-first        | ✅   | ✅   | 🔧      | 🔧      |
 | CLI tooling             | ✅   | ❌   | ❌      | ❌      |
+| Bun-native runtime      | ✅   | ✅   | ❌      | ❌      |
 
 `🔧`: Requires manual integration or plugins.
 

@@ -68,6 +68,39 @@ export interface RouteDefinition {
  * It doesn't modify the configuration.
  */
 export declare function createRoute<T extends RouteDefinition>(config: T): T;
+export interface MiddlewareMeta {
+    /** Human-readable name for debugging and tooling */
+    name?: string;
+    /** Optional description for documentation */
+    description?: string;
+}
+/**
+ * Helper type for declaring what context variables a middleware sets.
+ * Use this to get full type safety when a middleware calls `c.set('key', value)`.
+ *
+ * @example
+ * ```ts
+ * // types.d.ts
+ * declare module 'hono' {
+ *   interface ContextVariableMap {
+ *     userId: string;
+ *     orgId: number;
+ *   }
+ * }
+ *
+ * // middleware/auth.ts
+ * export default createMiddleware({
+ *   _: async (c, next) => {
+ *     c.set('userId', '123'); // fully typed
+ *     await next();
+ *   },
+ * });
+ * ```
+ */
+export type MiddlewareContext<Vars extends Record<string, unknown> = {}> = Context & {
+    set: <K extends keyof Vars | string>(key: K, value: K extends keyof Vars ? Vars[K] : unknown) => void;
+    get: <K extends keyof Vars | string>(key: K) => K extends keyof Vars ? Vars[K] : unknown;
+};
 /**
  * A helper function for defining middleware with typed context and next.
  * The generic C lets callers annotate `c` as SumiContext (or any Context
@@ -75,6 +108,7 @@ export declare function createRoute<T extends RouteDefinition>(config: T): T;
  */
 export declare function createMiddleware<C extends Context = SumiContext>(config: {
     _: (c: C, next: Next) => Promise<void | Response>;
+    meta?: MiddlewareMeta;
 }): typeof config;
 /**
  * A helper function for defining WebSockets in +ws.ts files.

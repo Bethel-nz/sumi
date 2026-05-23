@@ -23,6 +23,9 @@ export declare class Sumi {
     private requestIdEnabled;
     private healthCheckConfig;
     private rateLimitConfig;
+    private strictMode;
+    private middlewareCache;
+    private strictErrors;
     readonly plugins: PluginManager;
     private normalizeBasePath;
     private joinBase;
@@ -33,6 +36,8 @@ export declare class Sumi {
     private generateMiddlewareTypes;
     private is_valid_file;
     private convertToHonoRoute;
+    private loadAndBuildRoutes;
+    private build_routes_from_manifest;
     private build_routes;
     private handleFile;
     private processWebSocketFile;

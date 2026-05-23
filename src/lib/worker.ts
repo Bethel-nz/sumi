@@ -28,7 +28,7 @@ export interface WorkerManifest {
   middleware?: Record<string, (c: any, next: any) => any>;
 }
 
-export type WorkerConfig = Pick<SumiConfig, 'basePath' | 'openapi' | 'docs' | 'hooks'>;
+export type WorkerConfig = Pick<SumiConfig, 'basePath' | 'openapi' | 'docs' | 'hooks' | 'static'>;
 
 /**
  * Creates a Hono app from a pre-built route manifest.
@@ -51,6 +51,20 @@ export function createWorkerApp(
       await config.hooks!.onRequest!(c);
       await next();
     });
+  }
+
+  // Register static file routes (platform-specific: Cloudflare Workers uses env.ASSETS)
+  if (config.static && config.static.length > 0) {
+    for (const staticCfg of config.static) {
+      if (!staticCfg.path) continue;
+      app.get(staticCfg.path, async (c) => {
+        const assets = (c.env as any)?.ASSETS;
+        if (assets && typeof assets.fetch === 'function') {
+          return assets.fetch(c.req.raw);
+        }
+        return c.notFound();
+      });
+    }
   }
 
   // Register all routes from manifest

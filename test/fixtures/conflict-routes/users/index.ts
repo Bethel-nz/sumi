@@ -1,0 +1,5 @@
+import { createRoute } from '../../../../src/lib/router';
+
+export default createRoute({
+  get: (c) => c.json({ source: 'users/index' }),
+});

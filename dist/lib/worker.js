@@ -24,6 +24,20 @@ export function createWorkerApp(manifest, config = {}) {
             await next();
         });
     }
+    // Register static file routes (platform-specific: Cloudflare Workers uses env.ASSETS)
+    if (config.static && config.static.length > 0) {
+        for (const staticCfg of config.static) {
+            if (!staticCfg.path)
+                continue;
+            app.get(staticCfg.path, async (c) => {
+                const assets = c.env?.ASSETS;
+                if (assets && typeof assets.fetch === 'function') {
+                    return assets.fetch(c.req.raw);
+                }
+                return c.notFound();
+            });
+        }
+    }
     // Register all routes from manifest
     for (const { path: routePath, module: routeModule } of manifest.routes) {
         const routeDefinition = routeModule.default;

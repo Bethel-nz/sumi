@@ -1,6 +1,7 @@
 // test/features.test.ts
 import { describe, it, expect } from 'bun:test';
 import { createMockApp } from '../src/lib/testing';
+import { createMiddleware } from '../src/lib/router';
 
 // ── CORS ────────────────────────────────────────────────────
 describe('CORS', () => {
@@ -84,6 +85,63 @@ describe('Rate limiting', () => {
     // Third request should be rate-limited
     const res3 = await app.request('/');
     expect(res3.status).toBe(429);
+  });
+});
+
+// ── Middleware metadata ─────────────────────────────────────
+describe('Middleware metadata', () => {
+  it('accepts meta on createMiddleware and preserves it', () => {
+    const mw = createMiddleware({
+      _: async (c, next) => {
+        await next();
+      },
+      meta: { name: 'logger', description: 'Logs all requests' },
+    });
+    expect(mw.meta?.name).toBe('logger');
+    expect(mw.meta?.description).toBe('Logs all requests');
+  });
+
+  it('works without meta (backward compatible)', () => {
+    const mw = createMiddleware({
+      _: async (c, next) => {
+        await next();
+      },
+    });
+    expect(mw._).toBeDefined();
+    expect(mw.meta).toBeUndefined();
+  });
+});
+
+// ── Strict middleware validation ──────────────────────────
+describe('Strict middleware validation', () => {
+  it('throws at startup when strict: true and middleware is missing', async () => {
+    let threw = false;
+    try {
+      await createMockApp({
+        strict: true,
+        routesDir: 'test/fixtures/strict-routes',
+        middlewareDir: 'test/fixtures/middleware',
+        logger: false,
+      });
+    } catch (error: any) {
+      threw = true;
+      expect(error.message).toContain('nonexistent');
+    }
+    expect(threw).toBe(true);
+  });
+
+  it('warns but does not throw when strict is false (default)', async () => {
+    // Should succeed without throwing
+    const app = await createMockApp({
+      routesDir: 'test/fixtures/strict-routes',
+      middlewareDir: 'test/fixtures/middleware',
+      logger: false,
+    });
+    const res = await app.request('/');
+    // Route still works because missing middleware was skipped
+    expect(res.status).toBe(200);
+    const body = await res.json() as any;
+    expect(body.ok).toBe(true);
   });
 });
 

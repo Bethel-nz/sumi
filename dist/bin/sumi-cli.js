@@ -6,7 +6,12 @@ import path from 'path';
 import { execSync } from 'child_process';
 import chokidar from 'chokidar';
 import { Sumi } from '../lib/sumi';
+import { generateManifest, writeManifest } from '../lib/manifest';
+// Read version from package.json for --version output
+const pkgPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../package.json');
+const pkg = fs.existsSync(pkgPath) ? JSON.parse(fs.readFileSync(pkgPath, 'utf8')) : { version: '0.0.0' };
 const cli = cac('sumi');
+cli.version(pkg.version);
 function createDirectory(dirPath) {
     if (!fs.existsSync(dirPath)) {
         console.log(`Creating directory: ${dirPath}`);
@@ -844,6 +849,16 @@ cli
     if (!fs.existsSync(sumiDir)) {
         fs.mkdirSync(sumiDir, { recursive: true });
     }
+    // Generate route manifest for fast startup
+    try {
+        const configModule = await import(`file://${configPath}?v=${Date.now()}`);
+        const appConfig = configModule.default;
+        const manifest = generateManifest(appConfig.routesDir || 'routes', appConfig.middlewareDir || 'middleware');
+        writeManifest(manifest);
+    }
+    catch {
+        // If config can't be loaded, manifest will be generated at runtime
+    }
     // Generate the temporary server entry point
     const serverContent = `// Auto-generated Sumi dev server - DO NOT EDIT
 import { Sumi } from '@bethel-nz/sumi';
@@ -923,6 +938,9 @@ cli
         if (options.port) {
             config.port = options.port;
         }
+        // Generate route manifest for fast startup
+        const manifest = generateManifest(config.routesDir || 'routes', config.middlewareDir || 'middleware');
+        writeManifest(manifest);
         const sumi = new Sumi(config);
         // Graceful shutdown
         process.on('SIGINT', async () => {
@@ -968,52 +986,74 @@ cli
             // ignore — config may not be loadable in all contexts
         }
     }
-    if (options.target !== 'cloudflare') {
-        console.error(`[sumi build] Unknown target: "${options.target}". Only "cloudflare" is supported.`);
+    const validTargets = ['cloudflare', 'vercel'];
+    if (!validTargets.includes(options.target)) {
+        console.error(`[sumi build] Unknown target: "${options.target}". Supported: ${validTargets.join(', ')}`);
         process.exit(1);
     }
-    console.log('[sumi build] Generating Cloudflare Worker entry...');
-    const { generateWorkerEntry } = await import('../lib/worker-codegen');
-    const outEntryFile = path.join(options.outDir, 'worker-entry.ts');
-    const workerOutFile = path.join(options.outDir, 'worker.js');
-    const source = await generateWorkerEntry({
-        routesDir: options.routesDir,
-        middlewareDir: options.middlewareDir,
-        configPath: options.config,
-        outFile: outEntryFile,
-    });
-    fs.mkdirSync(options.outDir, { recursive: true });
-    fs.writeFileSync(outEntryFile, source, 'utf8');
-    console.log(`[sumi build] Written: ${outEntryFile}`);
-    // Bundle with Bun
-    console.log(`[sumi build] Bundling with Bun → ${workerOutFile}`);
-    const result = await Bun.build({
-        entrypoints: [path.resolve(outEntryFile)],
-        outdir: options.outDir,
-        target: 'browser', // CF workers use browser-compatible APIs
-        format: 'esm',
-        minify: false,
-        naming: 'worker.js',
-        // hono-rate-limiter is dynamically imported inside Sumi only when rateLimit
-        // is configured. CF Workers handle rate-limiting natively, so exclude it.
-        // Users can pass additional --external packages for native addons or other
-        // unbundleable deps (e.g. @memvid/sdk which ships a .node native binding).
-        external: [
-            'hono-rate-limiter',
-            ...options.external
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-        ],
-    });
-    if (!result.success) {
-        console.error('[sumi build] Bundle failed:');
-        for (const log of result.logs)
-            console.error(' ', log);
-        process.exit(1);
+    if (options.target === 'cloudflare') {
+        console.log('[sumi build] Generating Cloudflare Worker entry...');
+        const { generateWorkerEntry } = await import('../lib/worker-codegen');
+        const outEntryFile = path.join(options.outDir, 'worker-entry.ts');
+        const workerOutFile = path.join(options.outDir, 'worker.js');
+        const source = await generateWorkerEntry({
+            routesDir: options.routesDir,
+            middlewareDir: options.middlewareDir,
+            configPath: options.config,
+            outFile: outEntryFile,
+        });
+        fs.mkdirSync(options.outDir, { recursive: true });
+        fs.writeFileSync(outEntryFile, source, 'utf8');
+        console.log(`[sumi build] Written: ${outEntryFile}`);
+        // Bundle with Bun
+        console.log(`[sumi build] Bundling with Bun → ${workerOutFile}`);
+        const result = await Bun.build({
+            entrypoints: [path.resolve(outEntryFile)],
+            outdir: options.outDir,
+            target: 'browser', // CF workers use browser-compatible APIs
+            format: 'esm',
+            minify: false,
+            naming: 'worker.js',
+            // hono-rate-limiter is dynamically imported inside Sumi only when rateLimit
+            // is configured. CF Workers handle rate-limiting natively, so exclude it.
+            // Users can pass additional --external packages for native addons or other
+            // unbundleable deps (e.g. @memvid/sdk which ships a .node native binding).
+            external: [
+                'hono-rate-limiter',
+                ...options.external
+                    .split(',')
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+            ],
+        });
+        if (!result.success) {
+            console.error('[sumi build] Bundle failed:');
+            for (const log of result.logs)
+                console.error(' ', log);
+            process.exit(1);
+        }
+        console.log(`[sumi build] ✅ Worker bundle ready: ${workerOutFile}`);
+        console.log('[sumi build] Deploy with: wrangler deploy');
     }
-    console.log(`[sumi build] ✅ Worker bundle ready: ${workerOutFile}`);
-    console.log('[sumi build] Deploy with: wrangler deploy');
+    if (options.target === 'vercel') {
+        console.log('[sumi build] Generating Vercel Edge entry...');
+        const { generateVercelEntry } = await import('../lib/vercel-codegen');
+        const outEntryFile = path.join(options.outDir, 'vercel-entry.ts');
+        const source = await generateVercelEntry({
+            routesDir: options.routesDir,
+            middlewareDir: options.middlewareDir,
+            configPath: options.config,
+            outFile: outEntryFile,
+        });
+        fs.mkdirSync(options.outDir, { recursive: true });
+        fs.writeFileSync(outEntryFile, source, 'utf8');
+        console.log(`[sumi build] Written: ${outEntryFile}`);
+        console.log('[sumi build] ✅ Vercel Edge entry ready.');
+        console.log('[sumi build] Next steps:');
+        console.log('  1. Copy the entry file to your Vercel project (e.g., api/index.ts)');
+        console.log('  2. Ensure "@bethel-nz/sumi" is installed as a dependency');
+        console.log('  3. Deploy with: vercel deploy');
+    }
 });
 cli
     .command('generate <type> <name>', 'Generate route files or middleware')
@@ -1045,8 +1085,27 @@ cli
             .map((m) => m.trim().toLowerCase());
         await generateRouteFile(name, routesDir, methods);
     }
+    else if (type === 'resource') {
+        const configPath = path.resolve(process.cwd(), options.config);
+        let routesDir = 'routes';
+        if (fs.existsSync(configPath)) {
+            try {
+                const configModule = await import(`file://${configPath}?v=${Date.now()}`);
+                const config = configModule.default;
+                routesDir = config.routesDir || 'routes';
+            }
+            catch {
+                console.warn('⚠️  Could not read config, using default routes directory');
+            }
+        }
+        // Generate collection index route (e.g., routes/users/index.ts)
+        await generateRouteFile(`${name}/index`, routesDir, ['get', 'post']);
+        // Generate single resource route (e.g., routes/users/[id].ts)
+        await generateRouteFile(`${name}/[id]`, routesDir, ['get', 'patch', 'delete']);
+        console.log(`📦 Resource '${name}' scaffolded with collection + [id] routes.`);
+    }
     else {
-        console.error('❌ Invalid type. Use: sumi generate middleware <name> or sumi generate route <path>');
+        console.error('❌ Invalid type. Use: sumi generate middleware <name>, sumi generate route <path>, or sumi generate resource <name>');
     }
 });
 // Helper functions
@@ -1623,6 +1682,151 @@ export default createMiddleware({
     console.log(`🔧 Generated middleware: ${path.relative(process.cwd(), middlewarePath)}`);
     console.log(`💡 Usage: Apply this middleware to routes that need ${middlewareName} functionality`);
 }
+cli
+    .command('routes', 'Print all discovered routes')
+    .option('-c, --config <config>', 'Config file path', {
+    default: 'sumi.config.ts',
+})
+    .action(async (options) => {
+    const configPath = path.resolve(process.cwd(), options.config);
+    let routesDir = 'routes';
+    let middlewareDir = 'middleware';
+    if (fs.existsSync(configPath)) {
+        try {
+            const configModule = await import(`file://${configPath}?v=${Date.now()}`);
+            const config = configModule.default;
+            routesDir = config.routesDir || 'routes';
+            middlewareDir = config.middlewareDir || 'middleware';
+        }
+        catch {
+            // use defaults
+        }
+    }
+    const { generateManifest } = await import('../lib/manifest');
+    const manifest = generateManifest(routesDir, middlewareDir);
+    if (manifest.routes.length === 0) {
+        console.log('No routes found.');
+        return;
+    }
+    const root = { segment: '', fullPath: '', methods: [], children: new Map() };
+    for (const route of manifest.routes) {
+        const segments = route.routePath === '/' ? [''] : route.routePath.split('/').filter(Boolean);
+        let current = root;
+        let builtPath = '';
+        for (let i = 0; i < segments.length; i++) {
+            const seg = segments[i];
+            builtPath = builtPath + '/' + seg;
+            if (!current.children.has(seg)) {
+                current.children.set(seg, { segment: seg, fullPath: builtPath || '/', methods: [], children: new Map() });
+            }
+            current = current.children.get(seg);
+        }
+        // Determine method from file name or default
+        const method = route.isWebSocket ? 'WS' : 'HTTP';
+        current.methods.push({ method, filePath: path.relative(process.cwd(), route.filePath) });
+    }
+    function printTree(node, prefix = '', isRoot = true) {
+        const entries = Array.from(node.children.entries());
+        const total = entries.length;
+        for (let i = 0; i < total; i++) {
+            const [seg, child] = entries[i];
+            const isLast = i === total - 1;
+            const branch = isLast ? '└── ' : '├── ';
+            const nextPrefix = prefix + (isLast ? '    ' : '│   ');
+            // Print the path segment
+            const displayPath = child.fullPath;
+            console.log(`${prefix}${branch}${displayPath}`);
+            // Print methods for this node
+            if (child.methods.length > 0) {
+                const methodBranch = child.children.size > 0 ? '│' : '';
+                const methodPrefix = nextPrefix;
+                child.methods.forEach((m, idx) => {
+                    const mIsLast = idx === child.methods.length - 1 && child.children.size === 0;
+                    const mBranch = mIsLast ? '└── ' : '├── ';
+                    console.log(`${methodPrefix}${mBranch}${m.method.padEnd(6)} → ${m.filePath}`);
+                });
+            }
+            // Recurse into children
+            printTree(child, nextPrefix, false);
+        }
+    }
+    console.log(`\n🔥 Routes (${manifest.routes.length}):\n`);
+    printTree(root);
+    console.log();
+});
+cli
+    .command('doctor', 'Check project health: config, routes, middleware, deps')
+    .option('-c, --config <config>', 'Config file path', {
+    default: 'sumi.config.ts',
+})
+    .action(async (options) => {
+    const issues = [];
+    const ok = [];
+    // Check config
+    const configPath = path.resolve(process.cwd(), options.config);
+    if (fs.existsSync(configPath)) {
+        ok.push(`Config file found: ${options.config}`);
+        try {
+            const configModule = await import(`file://${configPath}?v=${Date.now()}`);
+            const config = configModule.default;
+            const routesDir = config.routesDir || 'routes';
+            const middlewareDir = config.middlewareDir || 'middleware';
+            // Check routes dir
+            if (fs.existsSync(routesDir)) {
+                ok.push(`Routes directory exists: ${routesDir}`);
+            }
+            else {
+                issues.push(`Routes directory missing: ${routesDir}`);
+            }
+            // Check middleware dir
+            if (fs.existsSync(middlewareDir)) {
+                ok.push(`Middleware directory exists: ${middlewareDir}`);
+            }
+            else {
+                issues.push(`Middleware directory missing: ${middlewareDir}`);
+            }
+            // Check dependencies
+            const pkgJsonPath = path.resolve(process.cwd(), 'package.json');
+            if (fs.existsSync(pkgJsonPath)) {
+                const pkg = JSON.parse(fs.readFileSync(pkgJsonPath, 'utf8'));
+                const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+                const required = ['hono', 'zod', '@bethel-nz/sumi'];
+                for (const dep of required) {
+                    if (deps[dep]) {
+                        ok.push(`Dependency installed: ${dep}@${deps[dep]}`);
+                    }
+                    else {
+                        issues.push(`Missing dependency: ${dep}`);
+                    }
+                }
+            }
+            else {
+                issues.push('No package.json found');
+            }
+        }
+        catch (error) {
+            issues.push(`Failed to load config: ${error.message}`);
+        }
+    }
+    else {
+        issues.push(`Config file not found: ${options.config}`);
+    }
+    // Report
+    console.log('\n🔥 Sumi Doctor\n');
+    for (const msg of ok) {
+        console.log(`  ✅ ${msg}`);
+    }
+    for (const msg of issues) {
+        console.log(`  ❌ ${msg}`);
+    }
+    console.log();
+    if (issues.length > 0) {
+        console.log(`Found ${issues.length} issue(s). Run \`sumi init\` to scaffold a new project.\n`);
+        process.exit(1);
+    }
+    else {
+        console.log('All checks passed.\n');
+    }
+});
 cli.help();
-cli.version('0.1.0');
 cli.parse();

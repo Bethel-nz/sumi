@@ -8,6 +8,7 @@ import { createBunWebSocket } from 'hono/bun';
 import { cors } from 'hono/cors';
 import { requestId } from 'hono/request-id';
 import { PluginManager } from './pluginmanager';
+import { RouteManifest, loadManifest } from './manifest';
 
 // NEW OpenAPI imports
 import {
@@ -64,6 +65,9 @@ export class Sumi {
   private requestIdEnabled: boolean;
   private healthCheckConfig: SumiConfig['healthCheck'];
   private rateLimitConfig: SumiConfig['rateLimit'];
+  private strictMode: boolean;
+  private middlewareCache: Map<string, any> = new Map();
+  private strictErrors: string[] = [];
   public readonly plugins: PluginManager;
 
 
@@ -143,7 +147,7 @@ export class Sumi {
 
   constructor(default_args: SumiConfig) {
     this.app = default_args.app || new Hono();
-    this.config_port = default_args.port;
+    this.config_port = default_args.port ?? 3000;
     this.openapiConfig = default_args.openapi;
     this.docsConfig = default_args.docs;
     this.hooks = default_args.hooks || {};
@@ -154,13 +158,14 @@ export class Sumi {
     this.requestIdEnabled = default_args.requestId ?? false;
     this.healthCheckConfig = default_args.healthCheck;
     this.rateLimitConfig = default_args.rateLimit;
+    this.strictMode = default_args.strict ?? false;
 
     this.app_base_path = this.normalizeBasePath(default_args.basePath);
     if (this.app_base_path) {
       this.app = this.app.basePath(this.app_base_path);
     }
 
-    this.logger = default_args.logger;
+    this.logger = default_args.logger ?? false;
     this.staticConfig = default_args.static || [];
 
     this.default_middleware_dir = default_args.middlewareDir
@@ -188,17 +193,6 @@ export class Sumi {
       (c as any).validatedEnv = this.validatedEnv;
       await next();
     });
-
-    // Serve Static files (favicons, etc)
-    this.staticConfig.forEach((config) => {
-      if(config.path && config.root){
-        const absRoot = path.isAbsolute(config.root)
-        ? config.root
-        : path.resolve(config.root);
-        this.app.use(config.path, serveStatic({root: absRoot}))
-      }
-    })
-    
 
     // OpenAPI endpoints will be added after routes are built
 
@@ -301,6 +295,25 @@ export {};
     }
 
     return routePath.replace(/\/+/g, '/').replace(/\/$/, '') || '/';
+  }
+
+  private async loadAndBuildRoutes(): Promise<void> {
+    const manifest = loadManifest();
+    if (manifest) {
+      await this.build_routes_from_manifest(manifest);
+    } else {
+      await this.build_routes();
+    }
+  }
+
+  private async build_routes_from_manifest(manifest: RouteManifest): Promise<void> {
+    for (const route of manifest.routes) {
+      if (route.isWebSocket) {
+        await this.processWebSocketFile(route.filePath);
+      } else {
+        await this.handleFile(route.filePath);
+      }
+    }
   }
 
   private async build_routes(
@@ -430,6 +443,11 @@ export {};
   }
 
   private async resolveMiddleware(middlewareName: string): Promise<any> {
+    // Return cached middleware if available
+    if (this.middlewareCache.has(middlewareName)) {
+      return this.middlewareCache.get(middlewareName);
+    }
+
     // Look for middleware in the middleware directory
     const middlewarePath = path.join(
       this.default_middleware_dir,
@@ -446,35 +464,50 @@ export {};
     }
 
     if (!fs.existsSync(finalPath)) {
-      console.warn(
-        `[Sumi Router] Middleware "${middlewareName}" not found at ${finalPath}`
-      );
+      const msg = `Middleware "${middlewareName}" not found at ${finalPath}`;
+      if (this.strictMode) {
+        this.strictErrors.push(`[Sumi Router] ${msg}`);
+      } else {
+        console.warn(`[Sumi Router] ${msg}`);
+      }
       return null;
     }
 
     try {
       const middlewareModule = await import(`${finalPath}?v=${Date.now()}`);
 
+      let resolved: any;
       if (
         middlewareModule.default &&
         typeof middlewareModule.default === 'function'
       ) {
-        return middlewareModule.default;
+        resolved = middlewareModule.default;
       } else if (
         middlewareModule.default &&
         typeof middlewareModule.default._ === 'function'
       ) {
         // Handle createMiddleware format
-        return middlewareModule.default._;
+        resolved = middlewareModule.default._;
       } else {
-        console.warn(
-          `[Sumi Router] Invalid middleware structure in ${middlewareName}. Expected function or { _: function }.`
-        );
+        const msg = `Invalid middleware structure in ${middlewareName}. Expected function or { _: function }.`;
+        if (this.strictMode) {
+          this.strictErrors.push(`[Sumi Router] ${msg}`);
+        } else {
+          console.warn(`[Sumi Router] ${msg}`);
+        }
         return null;
       }
+
+      this.middlewareCache.set(middlewareName, resolved);
+      return resolved;
     } catch (error) {
       const msg = error instanceof Error ? error.message.split('\n')[0].trim() : String(error);
-      console.error(`[Sumi Router] Failed to load middleware "${middlewareName}"\n  → ${msg}`);
+      const fullMsg = `Failed to load middleware "${middlewareName}"\n  → ${msg}`;
+      if (this.strictMode) {
+        this.strictErrors.push(`[Sumi Router] ${fullMsg}`);
+      } else {
+        console.error(`[Sumi Router] ${fullMsg}`);
+      }
       return null;
     }
   }
@@ -681,9 +714,11 @@ export {};
       );
     });
 
-    // Clear tracking sets
+    // Clear tracking sets and caches
     this.processedPaths.clear();
     this.uniqueRoutes.clear();
+    this.middlewareCache.clear();
+    this.strictErrors = [];
     this.openApiSetup = false;
   }
 
@@ -776,7 +811,14 @@ usage: curl -X GET ${baseUrl}`;
         this.clearRoutesAndMiddleware();
         await this.applyBaseMiddleware();
         await this.middlewareHandler.applyGlobalMiddleware();
-        await this.build_routes();
+        await this.loadAndBuildRoutes();
+
+        if (this.strictErrors.length > 0) {
+          const errors = this.strictErrors.join('\n');
+          this.strictErrors = [];
+          throw new Error(`Sumi strict mode errors:\n${errors}`);
+        }
+
         this.setupOpenAPIEndpoints();
         this.setupHealthCheck();
 
@@ -835,7 +877,14 @@ usage: curl -X GET ${baseUrl}`;
         this.clearRoutesAndMiddleware();
         await this.applyBaseMiddleware();
         await this.middlewareHandler.applyGlobalMiddleware();
-        await this.build_routes();
+        await this.loadAndBuildRoutes();
+
+        if (this.strictErrors.length > 0) {
+          const errors = this.strictErrors.join('\n');
+          this.strictErrors = [];
+          throw new Error(`Sumi strict mode errors:\n${errors}`);
+        }
+
         this.setupOpenAPIEndpoints();
         this.setupHealthCheck();
       }

@@ -35,11 +35,13 @@ export type DocsConfig = Omit<Partial<ApiReferenceConfiguration>, 'url'> & {
 export type OpenApiConfig = OpenApiSpecsOptions;
 export type SumiConfig = {
     app?: import('hono').Hono;
-    logger: boolean;
+    /** Enable Hono request logger. Defaults to false. */
+    logger?: boolean;
     basePath?: string;
     middlewareDir?: string;
     routesDir?: string;
-    port: number;
+    /** Server port. Defaults to 3000. */
+    port?: number;
     static?: StaticRouteConfig[];
     openapi?: OpenApiConfig;
     docs?: DocsConfig;
@@ -63,6 +65,11 @@ export type SumiConfig = {
         limit: number;
         keyGenerator?: (c: import('hono').Context) => string;
     };
+    /**
+     * When true, Sumi will throw an error at startup if a route references
+     * a middleware file that does not exist. Defaults to false (warns and skips).
+     */
+    strict?: boolean;
 };
 export type SumiContext = Context & {
     env: any;

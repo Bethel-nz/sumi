@@ -15,12 +15,20 @@ export interface EnvConfig<T extends Record<string, ZodSchema>> {
 export type ValidatedEnv<T extends Record<string, ZodSchema>> = {
     [K in keyof T]: T[K] extends z.ZodType<infer U> ? U : any;
 };
+/**
+ * Return type for hooks that can take over the response.
+ *
+ * Return nothing to let the request continue as normal, or return a `Response`
+ * to short-circuit: `onRequest` skips the route handler, `onResponse` replaces
+ * the handler's response, and `onError` replaces the default 500 body.
+ */
+export type HookResponse = Promise<Response | void> | Response | void;
 export interface SumiHooks {
     onReady?: () => Promise<void> | void;
     onShutdown?: () => Promise<void> | void;
-    onRequest?: (c: Context) => Promise<void> | void;
-    onResponse?: (c: Context) => Promise<void> | void;
-    onError?: (error: Error, c: Context) => Promise<void> | void;
+    onRequest?: (c: Context) => HookResponse;
+    onResponse?: (c: Context) => HookResponse;
+    onError?: (error: Error, c: Context) => HookResponse;
     onFileChange?: (filePath: string, eventType: 'add' | 'change' | 'unlink') => Promise<void> | void;
     onReload?: () => Promise<void> | void;
     onReloadComplete?: () => Promise<void> | void;

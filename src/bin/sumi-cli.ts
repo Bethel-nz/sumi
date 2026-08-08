@@ -2019,9 +2019,12 @@ cli
         current = current.children.get(seg)!;
       }
 
-      // Determine method from file name or default
-      const method = route.isWebSocket ? 'WS' : 'HTTP';
-      current.methods.push({ method, filePath: path.relative(process.cwd(), route.filePath) });
+      const filePath = path.relative(process.cwd(), route.filePath);
+      const verbs = route.methods.length > 0 ? route.methods : ['HTTP'];
+      for (const verb of verbs) {
+        const method = route.sse.includes(verb) ? `${verb} (SSE)` : verb;
+        current.methods.push({ method, filePath });
+      }
     }
 
     function printTree(node: TreeNode, prefix: string = '', isRoot = true) {
@@ -2040,12 +2043,12 @@ cli
 
         // Print methods for this node
         if (child.methods.length > 0) {
-          const methodBranch = child.children.size > 0 ? '│' : '';
           const methodPrefix = nextPrefix;
+          const width = Math.max(...child.methods.map((m) => m.method.length));
           child.methods.forEach((m, idx) => {
             const mIsLast = idx === child.methods.length - 1 && child.children.size === 0;
             const mBranch = mIsLast ? '└── ' : '├── ';
-            console.log(`${methodPrefix}${mBranch}${m.method.padEnd(6)} → ${m.filePath}`);
+            console.log(`${methodPrefix}${mBranch}${m.method.padEnd(width)} → ${m.filePath}`);
           });
         }
 

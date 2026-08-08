@@ -138,24 +138,37 @@ export class Sumi {
             await next();
         });
         // OpenAPI endpoints will be added after routes are built
-        // Set up global request/response hooks
+        this.registerRequestLifecycle();
+    }
+    /**
+     * Installs the request-lifecycle hooks on the current app instance.
+     *
+     * Each hook may return a `Response` to take over: `onRequest` short-circuits
+     * before the route handler runs, `onResponse` replaces what the handler
+     * produced, and `onError` replaces the default 500 body (and suppresses the
+     * default error log, since the hook has taken ownership of reporting).
+     */
+    registerRequestLifecycle() {
         if (this.hooks.onRequest) {
             this.app.use('*', async (c, next) => {
-                await this.hooks.onRequest?.(c);
+                const early = await this.hooks.onRequest?.(c);
+                if (early)
+                    return early;
                 await next();
             });
         }
         if (this.hooks.onResponse) {
             this.app.use('*', async (c, next) => {
                 await next();
-                await this.hooks.onResponse?.(c);
+                const replacement = await this.hooks.onResponse?.(c);
+                if (replacement)
+                    c.res = replacement;
             });
         }
-        // Enhanced error handler with hook
         this.app.onError(async (err, c) => {
-            if (this.hooks.onError) {
-                await this.hooks.onError(err, c);
-            }
+            const handled = await this.hooks.onError?.(err, c);
+            if (handled)
+                return handled;
             ErrorHandler.handleError(err, `Request to ${c.req.path} by ${c.req.method}`);
             return c.json({ error: 'Internal Server Error', message: err.message }, 500);
         });
@@ -532,27 +545,7 @@ export {};
             }
             await next();
         });
-        // Re-apply hooks
-        if (this.hooks.onRequest) {
-            this.app.use('*', async (c, next) => {
-                await this.hooks.onRequest?.(c);
-                await next();
-            });
-        }
-        if (this.hooks.onResponse) {
-            this.app.use('*', async (c, next) => {
-                await next();
-                await this.hooks.onResponse?.(c);
-            });
-        }
-        // Re-apply error handler to the new app instance
-        this.app.onError(async (err, c) => {
-            if (this.hooks.onError) {
-                await this.hooks.onError(err, c);
-            }
-            ErrorHandler.handleError(err, `Request to ${c.req.path} by ${c.req.method}`);
-            return c.json({ error: 'Internal Server Error', message: err.message }, 500);
-        });
+        this.registerRequestLifecycle();
         // Clear tracking sets and caches
         this.processedPaths.clear();
         this.uniqueRoutes.clear();

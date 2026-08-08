@@ -33,6 +33,15 @@ export declare class Sumi {
     private applyBaseMiddleware;
     private setupHealthCheck;
     constructor(default_args: SumiConfig);
+    /**
+     * Installs the request-lifecycle hooks on the current app instance.
+     *
+     * Each hook may return a `Response` to take over: `onRequest` short-circuits
+     * before the route handler runs, `onResponse` replaces what the handler
+     * produced, and `onError` replaces the default 500 body (and suppresses the
+     * default error log, since the hook has taken ownership of reporting).
+     */
+    private registerRequestLifecycle;
     private generateMiddlewareTypes;
     private is_valid_file;
     private convertToHonoRoute;
